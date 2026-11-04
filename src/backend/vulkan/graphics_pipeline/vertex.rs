@@ -10,15 +10,17 @@ pub trait Vertex {
     fn descriptor() -> VertexInputDescriptor;
 }
 
-impl VertexInputDescriptor {
-    pub fn default() -> Self {
+impl Default for VertexInputDescriptor {
+    fn default() -> Self {
         Self {
             binding_descriptions: Vec::new(),
             attribute_descriptions: Vec::new(),
             flags: vk::PipelineVertexInputStateCreateFlags::empty(),
         }
     }
+}
 
+impl VertexInputDescriptor {
     pub fn with_binding(mut self, description: vk::VertexInputBindingDescription) -> Self {
         self.binding_descriptions.push(description);
         self

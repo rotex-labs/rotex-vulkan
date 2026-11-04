@@ -57,8 +57,8 @@ pub struct GraphicsPipelineBuilder<'a> {
     dynamic_viewport: bool,
 }
 
-impl<'a> GraphicsPipelineBuilder<'a> {
-    pub fn new() -> Self {
+impl<'a> Default for GraphicsPipelineBuilder<'a> {
+    fn default() -> Self {
         Self {
             shader_stages: Vec::new(),
             render_pass: None,
@@ -74,6 +74,12 @@ impl<'a> GraphicsPipelineBuilder<'a> {
             depth_stencil_state: None,
             dynamic_viewport: false,
         }
+    }
+}
+
+impl<'a> GraphicsPipelineBuilder<'a> {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn with_shader_stage(mut self, stage: ShaderStageDescriptor<'a>) -> Self {
@@ -226,9 +232,7 @@ impl<'a> GraphicsPipelineBuilder<'a> {
             .flags(self.color_blend_state.flags);
 
         let subpass = self.subpass.unwrap_or(0);
-        let depth_stencil_state = self
-            .depth_stencil_state
-            .unwrap_or_else(DepthStencilState::default);
+        let depth_stencil_state = self.depth_stencil_state.unwrap_or_default();
         let depth_stencil_info = depth_stencil_state.to_vk_depth_stencil_state();
 
         let mut create_info = vk::GraphicsPipelineCreateInfo::default()

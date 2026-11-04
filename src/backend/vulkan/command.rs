@@ -283,6 +283,7 @@ impl CommandBuffer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn copy_buffer_to_image_at(
         &self,
         device: &Device,
@@ -320,6 +321,7 @@ impl CommandBuffer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn copy_image_to_buffer(
         &self,
         device: &Device,
@@ -357,6 +359,7 @@ impl CommandBuffer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn buffer_barrier(
         &self,
         device: &Device,

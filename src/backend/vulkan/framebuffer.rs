@@ -34,8 +34,8 @@ pub struct FramebufferBuilder {
     flags: vk::FramebufferCreateFlags,
 }
 
-impl FramebufferBuilder {
-    pub fn new() -> Self {
+impl Default for FramebufferBuilder {
+    fn default() -> Self {
         Self {
             attachments: Vec::new(),
             width: 0,
@@ -43,6 +43,12 @@ impl FramebufferBuilder {
             layers: 1,
             flags: vk::FramebufferCreateFlags::empty(),
         }
+    }
+}
+
+impl FramebufferBuilder {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn with_attachment(mut self, attachment: vk::ImageView) -> Self {

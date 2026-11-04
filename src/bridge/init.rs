@@ -126,11 +126,12 @@ pub(crate) fn map_work_queue_hints(hints: WorkQueueHints) -> Vec<BackendQueueReq
 }
 
 pub(crate) fn map_device_features(features: FrontendDeviceFeatures) -> vk::PhysicalDeviceFeatures {
-    let mut mapped = vk::PhysicalDeviceFeatures::default();
-    mapped.sampler_anisotropy = features.sampler_anisotropy as u32;
-    mapped.fill_mode_non_solid = features.fill_mode_non_solid as u32;
-    mapped.wide_lines = features.wide_lines as u32;
-    mapped
+    vk::PhysicalDeviceFeatures {
+        sampler_anisotropy: features.sampler_anisotropy as u32,
+        fill_mode_non_solid: features.fill_mode_non_solid as u32,
+        wide_lines: features.wide_lines as u32,
+        ..Default::default()
+    }
 }
 
 pub(super) fn to_vk_extent(extent: FrontendExtent2D) -> vk::Extent2D {

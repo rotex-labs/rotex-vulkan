@@ -228,8 +228,6 @@ fn map_vertex_format(format: VertexFormat) -> Result<vk::Format, Error> {
 }
 
 pub(super) fn spv_bytes_to_words(bytes: &[u8]) -> Vec<u32> {
-    bytes
-        .chunks_exact(4)
-        .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-        .collect()
+    let (chunks, _) = bytes.as_chunks::<4>();
+    chunks.iter().copied().map(u32::from_le_bytes).collect()
 }

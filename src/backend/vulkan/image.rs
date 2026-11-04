@@ -223,8 +223,8 @@ pub struct SamplerDescriptor {
     pub mipmap_mode: vk::SamplerMipmapMode,
 }
 
-impl SamplerDescriptor {
-    pub fn default() -> Self {
+impl Default for SamplerDescriptor {
+    fn default() -> Self {
         Self {
             mag_filter: vk::Filter::NEAREST,
             min_filter: vk::Filter::NEAREST,
@@ -239,7 +239,9 @@ impl SamplerDescriptor {
             mipmap_mode: vk::SamplerMipmapMode::LINEAR,
         }
     }
+}
 
+impl SamplerDescriptor {
     pub fn with_address_modes(
         mut self,
         u: vk::SamplerAddressMode,

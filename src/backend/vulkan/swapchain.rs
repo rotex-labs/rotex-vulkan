@@ -157,7 +157,7 @@ impl Swapchain {
             .old_swapchain(old_swapchain);
 
         let swapchain_loader =
-            ash::khr::swapchain::Device::new(&instance.instance(), &device.logical_device());
+            ash::khr::swapchain::Device::new(instance.instance(), device.logical_device());
         let swapchain = unsafe { swapchain_loader.create_swapchain(&swapchain_create_info, None) }
             .map_err(vk_error)?;
         let images =

@@ -9,8 +9,8 @@ pub struct Viewport {
     pub max_depth: f32,
 }
 
-impl Viewport {
-    pub fn default() -> Self {
+impl Default for Viewport {
+    fn default() -> Self {
         Self {
             x: 0.0,
             y: 0.0,
@@ -20,7 +20,9 @@ impl Viewport {
             max_depth: 1.0,
         }
     }
+}
 
+impl Viewport {
     pub fn with_position(mut self, x: f32, y: f32) -> Self {
         self.x = x;
         self.y = y;
@@ -65,8 +67,8 @@ pub struct RasterizationState {
     pub line_width: f32,
 }
 
-impl RasterizationState {
-    pub fn default() -> Self {
+impl Default for RasterizationState {
+    fn default() -> Self {
         Self {
             depth_clamp_enable: false,
             rasterizer_discard_enable: false,
@@ -81,7 +83,9 @@ impl RasterizationState {
             line_width: 1.0,
         }
     }
+}
 
+impl RasterizationState {
     pub fn with_depth_clamp_enable(mut self, enable: bool) -> Self {
         self.depth_clamp_enable = enable;
         self
@@ -155,8 +159,8 @@ pub struct DepthStencilState {
     pub max_depth_bounds: f32,
 }
 
-impl DepthStencilState {
-    pub fn default() -> Self {
+impl Default for DepthStencilState {
+    fn default() -> Self {
         Self {
             depth_test_enable: false,
             depth_write_enable: false,
@@ -167,7 +171,9 @@ impl DepthStencilState {
             max_depth_bounds: 1.0,
         }
     }
+}
 
+impl DepthStencilState {
     pub fn with_depth_test_enable(mut self, enable: bool) -> Self {
         self.depth_test_enable = enable;
         self
@@ -221,8 +227,8 @@ pub struct MultisampleState {
     pub flags: vk::PipelineMultisampleStateCreateFlags,
 }
 
-impl MultisampleState {
-    pub fn default() -> Self {
+impl Default for MultisampleState {
+    fn default() -> Self {
         Self {
             sample_shading_enable: false,
             rasterization_samples: vk::SampleCountFlags::TYPE_1,
@@ -233,7 +239,9 @@ impl MultisampleState {
             flags: vk::PipelineMultisampleStateCreateFlags::empty(),
         }
     }
+}
 
+impl MultisampleState {
     pub fn with_sample_shading_enable(mut self, enable: bool) -> Self {
         self.sample_shading_enable = enable;
         self
@@ -281,8 +289,8 @@ pub struct ColorBlendAttachmentState {
     pub color_write_mask: vk::ColorComponentFlags,
 }
 
-impl ColorBlendAttachmentState {
-    pub fn default() -> Self {
+impl Default for ColorBlendAttachmentState {
+    fn default() -> Self {
         Self {
             blend_enable: false,
             src_color_blend_factor: vk::BlendFactor::ONE,
@@ -297,7 +305,9 @@ impl ColorBlendAttachmentState {
                 | vk::ColorComponentFlags::A,
         }
     }
+}
 
+impl ColorBlendAttachmentState {
     pub fn with_blend_enable(mut self, enable: bool) -> Self {
         self.blend_enable = enable;
         self
@@ -361,8 +371,8 @@ pub struct ColorBlendState {
     pub flags: vk::PipelineColorBlendStateCreateFlags,
 }
 
-impl ColorBlendState {
-    pub fn default() -> Self {
+impl Default for ColorBlendState {
+    fn default() -> Self {
         Self {
             logic_op_enable: false,
             logic_op: vk::LogicOp::CLEAR,
@@ -371,7 +381,9 @@ impl ColorBlendState {
             flags: vk::PipelineColorBlendStateCreateFlags::empty(),
         }
     }
+}
 
+impl ColorBlendState {
     pub fn with_logic_op_enable(mut self, enable: bool) -> Self {
         self.logic_op_enable = enable;
         self

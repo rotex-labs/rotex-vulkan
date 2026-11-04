@@ -31,6 +31,7 @@ impl RenderPass {
     }
 }
 
+#[derive(Default)]
 pub struct RenderPassBuilder {
     attachments: Vec<vk::AttachmentDescription>,
     subpasses: Vec<SubpassBlueprint>,
@@ -39,11 +40,7 @@ pub struct RenderPassBuilder {
 
 impl RenderPassBuilder {
     pub fn new() -> Self {
-        Self {
-            attachments: Vec::new(),
-            subpasses: Vec::new(),
-            dependencies: Vec::new(),
-        }
+        Self::default()
     }
 
     pub fn with_attachment(mut self, attachment: vk::AttachmentDescription) -> Self {

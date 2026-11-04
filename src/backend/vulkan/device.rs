@@ -287,10 +287,8 @@ impl Adapter {
 
         let mut queue_priorities: BTreeMap<u32, Vec<f32>> = BTreeMap::new();
         for allocation in &allocations {
-            let entry = queue_priorities
-                .entry(allocation.family_index)
-                .or_insert_with(Vec::new);
-            entry.extend(std::iter::repeat(1.0).take(allocation.count as usize));
+            let entry = queue_priorities.entry(allocation.family_index).or_default();
+            entry.extend(std::iter::repeat_n(1.0, allocation.count as usize));
         }
 
         for (family_index, priorities) in queue_priorities.iter_mut() {

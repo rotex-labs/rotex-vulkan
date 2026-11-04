@@ -618,7 +618,6 @@ impl VulkanBridge {
             .ok_or_else(|| Error::unsupported("graphics pipeline not found"))?
             .compiled
             .insert(render_pass.as_raw(), handles);
-        std::mem::forget(compiled);
         Ok(())
     }
 
@@ -650,12 +649,11 @@ impl VulkanBridge {
         &self,
         descriptor: &rotex_types::SamplerDescriptor,
     ) -> Result<RotexSampler, Error> {
-        let mut sampler = crate::backend::vulkan::SamplerDescriptor::default();
-        sampler.mag_filter = match descriptor.mag_filter {
+        let mag_filter = match descriptor.mag_filter {
             rotex_types::FilterMode::Nearest => vk::Filter::NEAREST,
             rotex_types::FilterMode::Linear => vk::Filter::LINEAR,
         };
-        sampler.min_filter = match descriptor.min_filter {
+        let min_filter = match descriptor.min_filter {
             rotex_types::FilterMode::Nearest => vk::Filter::NEAREST,
             rotex_types::FilterMode::Linear => vk::Filter::LINEAR,
         };
@@ -664,9 +662,14 @@ impl VulkanBridge {
             rotex_types::AddressMode::Repeat => vk::SamplerAddressMode::REPEAT,
             rotex_types::AddressMode::MirrorRepeat => vk::SamplerAddressMode::MIRRORED_REPEAT,
         };
-        sampler.address_mode_u = address;
-        sampler.address_mode_v = address;
-        sampler.address_mode_w = address;
+        let sampler = crate::backend::vulkan::SamplerDescriptor {
+            mag_filter,
+            min_filter,
+            address_mode_u: address,
+            address_mode_v: address,
+            address_mode_w: address,
+            ..Default::default()
+        };
         RotexSampler::new(self.device.raw(), sampler)
     }
 
