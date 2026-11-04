@@ -132,14 +132,6 @@ impl Adapter {
         }
     }
 
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn physical_device(&self) -> vk::PhysicalDevice {
-        self.handle
-    }
-
     pub fn has_swapchain_extension(&self, instance: &Instance) -> Result<bool, Error> {
         let extensions = unsafe {
             instance
