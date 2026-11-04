@@ -54,6 +54,7 @@ pub struct GraphicsPipelineBuilder<'a> {
     color_blend_state: ColorBlendState,
     subpass: Option<u32>,
     depth_stencil_state: Option<DepthStencilState>,
+    dynamic_viewport: bool,
 }
 
 impl<'a> GraphicsPipelineBuilder<'a> {
@@ -71,6 +72,7 @@ impl<'a> GraphicsPipelineBuilder<'a> {
             color_blend_state: ColorBlendState::default(),
             subpass: None,
             depth_stencil_state: None,
+            dynamic_viewport: false,
         }
     }
 
@@ -137,6 +139,11 @@ impl<'a> GraphicsPipelineBuilder<'a> {
         self
     }
 
+    pub fn with_dynamic_viewport(mut self, enabled: bool) -> Self {
+        self.dynamic_viewport = enabled;
+        self
+    }
+
     pub fn build(self, device: &Device) -> Result<GraphicsPipeline, Error> {
         if self.shader_stages.is_empty() {
             return Err(Error::fatal(ErrorKind::Vulkan(
@@ -180,10 +187,19 @@ impl<'a> GraphicsPipelineBuilder<'a> {
                 height: self.viewport_state.height,
             },
         }];
+        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic_info =
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
-        let viewport_info = vk::PipelineViewportStateCreateInfo::default()
-            .viewports(&viewports)
-            .scissors(&scissors);
+        let viewport_info = if self.dynamic_viewport {
+            vk::PipelineViewportStateCreateInfo::default()
+                .viewport_count(1)
+                .scissor_count(1)
+        } else {
+            vk::PipelineViewportStateCreateInfo::default()
+                .viewports(&viewports)
+                .scissors(&scissors)
+        };
 
         let rasterizer_info = self.rasterization_state.to_vk_rasterization_state();
 
@@ -215,7 +231,7 @@ impl<'a> GraphicsPipelineBuilder<'a> {
             .unwrap_or_else(DepthStencilState::default);
         let depth_stencil_info = depth_stencil_state.to_vk_depth_stencil_state();
 
-        let create_info = vk::GraphicsPipelineCreateInfo::default()
+        let mut create_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&vk_shader_stages)
             .vertex_input_state(&vertex_input_info)
             .input_assembly_state(&self.input_assembly_state)
@@ -227,6 +243,9 @@ impl<'a> GraphicsPipelineBuilder<'a> {
             .layout(self.layout.unwrap())
             .render_pass(self.render_pass.unwrap())
             .subpass(subpass);
+        if self.dynamic_viewport {
+            create_info = create_info.dynamic_state(&dynamic_info);
+        }
 
         GraphicsPipeline::new(device, &create_info)
     }

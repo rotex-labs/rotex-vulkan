@@ -4,7 +4,7 @@ use ash::vk;
 
 use super::bindings::{build_set_layout, map_binding_type, map_memory_location};
 use super::{VulkanBridge, types::VertexLayoutId};
-use crate::backend::vulkan::{Device, ImageDescriptor, RotexBuffer, RotexImage, RotexSampler};
+use crate::backend::vulkan::{Device, ImageDescriptor, RotexBuffer, RotexImage};
 use crate::error::{Error, ErrorKind, vk_error};
 use rotex_types::resource::{
     BindGroupEntryDescriptor, BindGroupId, BindGroupLayoutId, BufferId, BufferUsage, BufferUsages,
@@ -53,7 +53,14 @@ impl VulkanBridge {
                     height: desc.height,
                     depth: 1,
                 },
-                vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+                vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::SAMPLED
+                    | if desc.render_attachment {
+                        vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    } else {
+                        vk::ImageUsageFlags::empty()
+                    },
                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
             ),
         )?;
@@ -282,6 +289,7 @@ impl VulkanBridge {
                         width: texture.width,
                         height: texture.height,
                     });
+                    self.note_texture_created(id, &resource);
                     self.textures.insert(id, resource);
                     handles.push(ResourceHandle::Texture(id));
                 }
@@ -318,6 +326,7 @@ impl VulkanBridge {
                             size: buf.size,
                         },
                     );
+                    self.note_buffer_created(id, buf.effective_usages());
                     handles.push(ResourceHandle::Buffer(id));
                 }
                 ResourceCreateDescriptor::BindGroupLayout { id, layout } => {
@@ -405,6 +414,40 @@ impl VulkanBridge {
                     let result = self.create_compute_pipeline_resource(&pipeline)?;
                     self.compute_pipelines.insert(id, result);
                     handles.push(ResourceHandle::ComputePipeline(id));
+                }
+                ResourceCreateDescriptor::Sampler { id, sampler } => {
+                    let id = rotex_types::SamplerId(id);
+                    ensure_absent(&self.samplers, &id)?;
+                    let created = self.create_sampler_resource(&sampler)?;
+                    self.samplers.insert(id, created);
+                    handles.push(ResourceHandle::Sampler(id));
+                }
+                ResourceCreateDescriptor::GraphicsPipeline { id, pipeline } => {
+                    let id = rotex_types::GraphicsPipelineId(id);
+                    ensure_absent(&self.explicit_pipelines, &id)?;
+                    self.explicit_pipelines.insert(
+                        id,
+                        super::extended::ExplicitGraphicsPipeline {
+                            descriptor: pipeline,
+                            compiled: std::collections::HashMap::new(),
+                        },
+                    );
+                    handles.push(ResourceHandle::GraphicsPipeline(id));
+                }
+                ResourceCreateDescriptor::QuerySet { id, query_set } => {
+                    let id = rotex_types::QuerySetId(id);
+                    ensure_absent(&self.query_sets, &id)?;
+                    let pool = self.create_query_pool(query_set.count, query_set.ty)?;
+                    self.query_sets.insert(
+                        id,
+                        super::extended::QuerySetResource {
+                            pool,
+                            count: query_set.count,
+                            ty: query_set.ty,
+                            reset_recorded: false,
+                        },
+                    );
+                    handles.push(ResourceHandle::QuerySet(id));
                 }
                 _ => {
                     return Err(Error::unsupported("resource create not implemented"));
@@ -626,10 +669,41 @@ impl VulkanBridge {
                 self.general_descriptor_pool
                     .free_sets(self.device.raw(), &[group.descriptor_set])?;
             }
-            ResourceHandle::Sampler(_)
-            | ResourceHandle::GraphicsPipeline(_)
-            | ResourceHandle::QuerySet(_) => {
-                return Err(Error::unsupported("resource destroy not implemented"));
+            ResourceHandle::Sampler(id) => {
+                let sampler = self
+                    .samplers
+                    .remove(&id)
+                    .ok_or_else(|| Error::unsupported("sampler not found"))?;
+                sampler.destroy(self.device.raw());
+            }
+            ResourceHandle::GraphicsPipeline(id) => {
+                let pipeline = self
+                    .explicit_pipelines
+                    .remove(&id)
+                    .ok_or_else(|| Error::unsupported("graphics pipeline not found"))?;
+                let device = self.device.raw();
+                for (_, (pipeline_handle, layout_handle)) in pipeline.compiled {
+                    unsafe {
+                        device
+                            .logical_device()
+                            .destroy_pipeline(pipeline_handle, None);
+                        device
+                            .logical_device()
+                            .destroy_pipeline_layout(layout_handle, None);
+                    }
+                }
+            }
+            ResourceHandle::QuerySet(id) => {
+                let query = self
+                    .query_sets
+                    .remove(&id)
+                    .ok_or_else(|| Error::unsupported("query set not found"))?;
+                unsafe {
+                    self.device
+                        .raw()
+                        .logical_device()
+                        .destroy_query_pool(query.pool, None);
+                }
             }
             _ => return Err(Error::unsupported("resource destroy not implemented")),
         }
@@ -661,7 +735,7 @@ fn write_bytes(device: &Device, buffer: &RotexBuffer, data: &[u8]) -> Result<(),
     Ok(())
 }
 
-fn map_index_type(index_format: IndexFormat) -> vk::IndexType {
+pub(super) fn map_index_type(index_format: IndexFormat) -> vk::IndexType {
     match index_format {
         IndexFormat::Uint16 => vk::IndexType::UINT16,
         IndexFormat::Uint32 => vk::IndexType::UINT32,
@@ -832,6 +906,15 @@ fn map_buffer_usage(desc: &rotex_types::resource::BufferDescriptor) -> vk::Buffe
     }
     if usages.contains(BufferUsages::STORAGE) {
         flags |= vk::BufferUsageFlags::STORAGE_BUFFER;
+    }
+    if usages.contains(BufferUsages::COPY_SRC) {
+        flags |= vk::BufferUsageFlags::TRANSFER_SRC;
+    }
+    if usages.contains(BufferUsages::COPY_DST) {
+        flags |= vk::BufferUsageFlags::TRANSFER_DST;
+    }
+    if usages.contains(BufferUsages::INDIRECT) {
+        flags |= vk::BufferUsageFlags::INDIRECT_BUFFER;
     }
     if flags == vk::BufferUsageFlags::TRANSFER_DST {
         if desc.usage == BufferUsage::Uniform {

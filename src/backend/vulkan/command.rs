@@ -133,10 +133,23 @@ impl CommandBuffer {
     }
 
     pub fn bind_vertex_buffer(&self, device: &Device, buffer: vk::Buffer) {
+        self.bind_vertex_buffer_at(device, 0, buffer, 0);
+    }
+
+    pub fn bind_vertex_buffer_at(
+        &self,
+        device: &Device,
+        binding: u32,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+    ) {
         unsafe {
-            device
-                .logical_device()
-                .cmd_bind_vertex_buffers(self.handle, 0, &[buffer], &[0]);
+            device.logical_device().cmd_bind_vertex_buffers(
+                self.handle,
+                binding,
+                &[buffer],
+                &[offset],
+            );
         }
     }
 
@@ -247,14 +260,226 @@ impl CommandBuffer {
         dst: vk::Buffer,
         size: vk::DeviceSize,
     ) {
+        self.copy_buffer_region(device, src, 0, dst, 0, size);
+    }
+
+    pub fn copy_buffer_region(
+        &self,
+        device: &Device,
+        src: vk::Buffer,
+        src_offset: vk::DeviceSize,
+        dst: vk::Buffer,
+        dst_offset: vk::DeviceSize,
+        size: vk::DeviceSize,
+    ) {
         let region = vk::BufferCopy::default()
-            .src_offset(0)
-            .dst_offset(0)
+            .src_offset(src_offset)
+            .dst_offset(dst_offset)
             .size(size);
         unsafe {
             device
                 .logical_device()
                 .cmd_copy_buffer(self.handle, src, dst, &[region]);
+        }
+    }
+
+    pub fn copy_buffer_to_image_at(
+        &self,
+        device: &Device,
+        buffer: vk::Buffer,
+        buffer_offset: vk::DeviceSize,
+        row_length: u32,
+        image: vk::Image,
+        width: u32,
+        height: u32,
+    ) {
+        let region = vk::BufferImageCopy::default()
+            .buffer_offset(buffer_offset)
+            .buffer_row_length(row_length)
+            .buffer_image_height(0)
+            .image_subresource(
+                vk::ImageSubresourceLayers::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .mip_level(0)
+                    .base_array_layer(0)
+                    .layer_count(1),
+            )
+            .image_extent(vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            });
+        unsafe {
+            device.logical_device().cmd_copy_buffer_to_image(
+                self.handle,
+                buffer,
+                image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[region],
+            );
+        }
+    }
+
+    pub fn copy_image_to_buffer(
+        &self,
+        device: &Device,
+        image: vk::Image,
+        buffer: vk::Buffer,
+        buffer_offset: vk::DeviceSize,
+        row_length: u32,
+        width: u32,
+        height: u32,
+    ) {
+        let region = vk::BufferImageCopy::default()
+            .buffer_offset(buffer_offset)
+            .buffer_row_length(row_length)
+            .buffer_image_height(0)
+            .image_subresource(
+                vk::ImageSubresourceLayers::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .mip_level(0)
+                    .base_array_layer(0)
+                    .layer_count(1),
+            )
+            .image_extent(vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            });
+        unsafe {
+            device.logical_device().cmd_copy_image_to_buffer(
+                self.handle,
+                image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                buffer,
+                &[region],
+            );
+        }
+    }
+
+    pub fn buffer_barrier(
+        &self,
+        device: &Device,
+        buffer: vk::Buffer,
+        size: vk::DeviceSize,
+        src_access: vk::AccessFlags,
+        dst_access: vk::AccessFlags,
+        src_stage: vk::PipelineStageFlags,
+        dst_stage: vk::PipelineStageFlags,
+    ) {
+        let barrier = vk::BufferMemoryBarrier::default()
+            .src_access_mask(src_access)
+            .dst_access_mask(dst_access)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .buffer(buffer)
+            .offset(0)
+            .size(size);
+        unsafe {
+            device.logical_device().cmd_pipeline_barrier(
+                self.handle,
+                src_stage,
+                dst_stage,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[barrier],
+                &[],
+            );
+        }
+    }
+
+    pub fn push_constants(
+        &self,
+        device: &Device,
+        layout: vk::PipelineLayout,
+        stages: vk::ShaderStageFlags,
+        offset: u32,
+        data: &[u8],
+    ) {
+        unsafe {
+            device
+                .logical_device()
+                .cmd_push_constants(self.handle, layout, stages, offset, data);
+        }
+    }
+
+    pub fn draw_vertices(
+        &self,
+        device: &Device,
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
+    ) {
+        unsafe {
+            device.logical_device().cmd_draw(
+                self.handle,
+                vertex_count,
+                instance_count,
+                first_vertex,
+                first_instance,
+            );
+        }
+    }
+
+    pub fn reset_queries(&self, device: &Device, pool: vk::QueryPool, count: u32) {
+        unsafe {
+            device
+                .logical_device()
+                .cmd_reset_query_pool(self.handle, pool, 0, count);
+        }
+    }
+
+    pub fn write_timestamp(&self, device: &Device, pool: vk::QueryPool, index: u32) {
+        unsafe {
+            device.logical_device().cmd_write_timestamp(
+                self.handle,
+                vk::PipelineStageFlags::ALL_COMMANDS,
+                pool,
+                index,
+            );
+        }
+    }
+
+    pub fn begin_query(&self, device: &Device, pool: vk::QueryPool, index: u32) {
+        unsafe {
+            device.logical_device().cmd_begin_query(
+                self.handle,
+                pool,
+                index,
+                vk::QueryControlFlags::empty(),
+            );
+        }
+    }
+
+    pub fn end_query(&self, device: &Device, pool: vk::QueryPool, index: u32) {
+        unsafe {
+            device
+                .logical_device()
+                .cmd_end_query(self.handle, pool, index);
+        }
+    }
+
+    pub fn resolve_queries(
+        &self,
+        device: &Device,
+        pool: vk::QueryPool,
+        first: u32,
+        count: u32,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+    ) {
+        unsafe {
+            device.logical_device().cmd_copy_query_pool_results(
+                self.handle,
+                pool,
+                first,
+                count,
+                buffer,
+                offset,
+                std::mem::size_of::<u64>() as vk::DeviceSize,
+                vk::QueryResultFlags::WAIT | vk::QueryResultFlags::TYPE_64,
+            );
         }
     }
 
@@ -286,9 +511,10 @@ impl CommandBuffer {
                 vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
                     | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
             ),
-            _ => {
-                panic!("Rotex Core Panic: Layout transition rule not defined in state inferencer!")
-            }
+            _ => (
+                vk::AccessFlags::empty(),
+                vk::PipelineStageFlags::ALL_COMMANDS,
+            ),
         }
     }
 

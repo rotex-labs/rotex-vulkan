@@ -16,7 +16,8 @@ impl VulkanBridge {
     pub(super) fn create_pipeline_for_material(
         &self,
         material: &MaterialDescriptor,
-        vertex_layout: &VertexBufferLayout,
+        vertex_layouts: &[VertexBufferLayout],
+        dynamic_viewport: bool,
         render_pass: vk::RenderPass,
         extent: vk::Extent2D,
         depth_mode: DepthMode,
@@ -58,7 +59,9 @@ impl VulkanBridge {
         )?;
         let set_layout_handles: Vec<vk::DescriptorSetLayout> =
             vk_layouts.iter().map(|l| l.handle()).collect();
-        let layout = GraphicsPipelineLayout::new(self.device.raw(), &set_layout_handles, &[])?;
+        let push_ranges = super::extended::push_constant_ranges(&material.shaders.layout);
+        let layout =
+            GraphicsPipelineLayout::new(self.device.raw(), &set_layout_handles, &push_ranges)?;
         let pipeline = GraphicsPipelineBuilder::new()
             .with_shader_stage(
                 ShaderStageDescriptor::new(vk::ShaderStageFlags::VERTEX, &vert)
@@ -84,7 +87,8 @@ impl VulkanBridge {
             } else {
                 DepthStencilState::default()
             })
-            .with_vertex_input_state(vertex_input_descriptor(vertex_layout)?)
+            .with_vertex_input_state(vertex_input_descriptor(vertex_layouts)?)
+            .with_dynamic_viewport(dynamic_viewport)
             .with_render_pass(render_pass)
             .with_layout(layout.handle())
             .with_extent(extent.width, extent.height)
@@ -132,7 +136,8 @@ impl VulkanBridge {
                 .clone();
             let pipeline = self.create_pipeline_for_material(
                 &material_desc,
-                &vertex_layout,
+                std::slice::from_ref(&vertex_layout),
+                false,
                 render_pass,
                 extent,
                 depth_mode,
@@ -174,37 +179,37 @@ impl VulkanBridge {
     }
 }
 
-fn vertex_input_descriptor(layout: &VertexBufferLayout) -> Result<VertexInputDescriptor, Error> {
-    if layout.array_stride > u32::MAX as u64 {
-        return Err(Error::fatal(ErrorKind::Unsupported(
-            "Vertex layout stride exceeds Vulkan limits",
-        )));
-    }
-    let input_rate = match layout.step_mode {
-        rotex_types::VertexStepMode::Vertex => vk::VertexInputRate::VERTEX,
-        rotex_types::VertexStepMode::Instance => vk::VertexInputRate::INSTANCE,
-    };
-    let mut descriptor =
-        VertexInputDescriptor::default().with_binding(vk::VertexInputBindingDescription {
-            binding: 0,
+fn vertex_input_descriptor(layouts: &[VertexBufferLayout]) -> Result<VertexInputDescriptor, Error> {
+    let mut descriptor = VertexInputDescriptor::default();
+    for (binding, layout) in layouts.iter().enumerate() {
+        if layout.array_stride > u32::MAX as u64 {
+            return Err(Error::fatal(ErrorKind::Unsupported(
+                "Vertex layout stride exceeds Vulkan limits",
+            )));
+        }
+        let input_rate = match layout.step_mode {
+            rotex_types::VertexStepMode::Vertex => vk::VertexInputRate::VERTEX,
+            rotex_types::VertexStepMode::Instance => vk::VertexInputRate::INSTANCE,
+        };
+        descriptor = descriptor.with_binding(vk::VertexInputBindingDescription {
+            binding: binding as u32,
             stride: layout.array_stride as u32,
             input_rate,
         });
-
-    for attribute in &layout.attributes {
-        if attribute.offset > u32::MAX as u64 {
-            return Err(Error::fatal(ErrorKind::Unsupported(
-                "Vertex attribute offset exceeds Vulkan limits",
-            )));
+        for attribute in &layout.attributes {
+            if attribute.offset > u32::MAX as u64 {
+                return Err(Error::fatal(ErrorKind::Unsupported(
+                    "Vertex attribute offset exceeds Vulkan limits",
+                )));
+            }
+            descriptor = descriptor.with_attribute(vk::VertexInputAttributeDescription {
+                location: attribute.location,
+                binding: binding as u32,
+                format: map_vertex_format(attribute.format)?,
+                offset: attribute.offset as u32,
+            });
         }
-        descriptor = descriptor.with_attribute(vk::VertexInputAttributeDescription {
-            location: attribute.location,
-            binding: 0,
-            format: map_vertex_format(attribute.format)?,
-            offset: attribute.offset as u32,
-        });
     }
-
     Ok(descriptor)
 }
 

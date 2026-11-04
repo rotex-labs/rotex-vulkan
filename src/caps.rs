@@ -7,14 +7,14 @@ use crate::bridge::VulkanBridge;
 pub(crate) const CAPS: CoreCaps = CoreCaps {
     compute: Support::Native,
     storage_buffers: Support::Native,
-    push_constants: Support::Absent,
-    barriers: Support::Absent,
-    queries: Support::Absent,
-    copies: Support::Absent,
-    readback: Support::Absent,
+    push_constants: Support::Native,
+    barriers: Support::Native,
+    queries: Support::Native,
+    copies: Support::Native,
+    readback: Support::Native,
     render_to_texture: Support::Native,
     dynamic_offsets: Support::Native,
-    explicit_pipelines: Support::Absent,
+    explicit_pipelines: Support::Native,
 };
 
 impl StaticCaps for VulkanBridge {

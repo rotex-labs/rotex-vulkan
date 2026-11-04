@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 mod bindings;
 mod compute_pipeline_cache;
+mod extended;
 pub(crate) mod init;
 mod pass_targets;
 mod pipeline_cache;
@@ -12,8 +13,8 @@ mod types;
 use std::collections::{HashMap, HashSet};
 
 use crate::backend::vulkan::{
-    CommandBuffer, CommandPool, DeferredDeleteQueue, DescriptorPool, DescriptorPoolManager,
-    DescriptorSetLayout, Device, Fence, FrameSlot, VulkanDevice, VulkanInstance,
+    CommandBuffer, CommandPool, DeferredDeleteQueue, DescriptorPoolManager, DescriptorSetLayout,
+    Device, Fence, FrameSlot, VulkanDevice, VulkanInstance,
 };
 use crate::error::{Error, ErrorKind, vk_error};
 use pass_targets::PassTargetCache;
@@ -25,7 +26,7 @@ use rotex_types::resource::{
     VertexBufferLayout,
 };
 use types::{
-    BindGroupLayoutResource, BindGroupResource, BufferResource, ComputePipelineResource, DepthMode,
+    BindGroupLayoutResource, BindGroupResource, BufferResource, ComputePipelineResource,
     MaterialPipeline, MaterialPipelineKey, MaterialResource, MeshResource, SurfaceState,
     TextureResource, VertexLayoutId,
 };
@@ -58,6 +59,14 @@ pub struct VulkanBridge {
     vertex_layouts: HashMap<VertexLayoutId, VertexBufferLayout>,
     buffers: HashMap<BufferId, BufferResource>,
     compute_pipelines: HashMap<ComputePipelineId, ComputePipelineResource>,
+    samplers: HashMap<rotex_types::SamplerId, crate::backend::vulkan::RotexSampler>,
+    explicit_pipelines:
+        HashMap<rotex_types::GraphicsPipelineId, extended::ExplicitGraphicsPipeline>,
+    query_sets: HashMap<rotex_types::QuerySetId, extended::QuerySetResource>,
+    buffer_states: HashMap<BufferId, rotex_types::ResourceState>,
+    texture_states: HashMap<TextureId, rotex_types::ResourceState>,
+    compute_pass_open: bool,
+    active_compute_pipeline: Option<ComputePipelineId>,
     deferred_delete: DeferredDeleteQueue,
     active_render_pass: Option<vk::RenderPass>,
     active_pass_extent: Option<vk::Extent2D>,
@@ -151,6 +160,7 @@ impl VulkanBridge {
         self.deferred_delete.destroy_all(self.device.raw());
         self.destroy_all_pipelines();
         self.destroy_all_compute_pipelines();
+        self.destroy_explicit_pipelines();
 
         let device = self.device.raw();
         for (_, buf) in self.buffers.drain() {
@@ -298,36 +308,6 @@ impl VulkanBridge {
                     slot.command_buffer.end_render_pass(self.device.raw());
                     self.active_render_pass = None;
                 }
-                rotex_types::RhiCommand::BindGraphicsPipeline {
-                    material,
-                    mesh,
-                    depth_enabled,
-                } => {
-                    let mesh_res = self
-                        .meshes
-                        .get(mesh)
-                        .ok_or(Error::fatal(ErrorKind::Unsupported("mesh not found")))?;
-                    let depth_mode = if *depth_enabled {
-                        DepthMode::Enabled
-                    } else {
-                        DepthMode::Disabled
-                    };
-                    let render_pass =
-                        self.active_render_pass
-                            .ok_or(Error::fatal(ErrorKind::Unsupported(
-                                "no active render pass",
-                            )))?;
-                    let (pipeline_handle, layout_handle) = self.pipeline_handle_for(
-                        *material,
-                        mesh_res.vertex_layout_id,
-                        depth_mode,
-                        render_pass,
-                    )?;
-                    let slot = &self.frame_slots[self.current_frame_index as usize];
-                    slot.command_buffer
-                        .bind_graphics_pipeline(self.device.raw(), pipeline_handle);
-                    self.active_pipeline_layout = Some(layout_handle);
-                }
                 rotex_types::RhiCommand::BindGroups {
                     first_slot,
                     bind_groups,
@@ -345,13 +325,22 @@ impl VulkanBridge {
                         sets.push(bg.descriptor_set.handle());
                     }
                     let slot = &self.frame_slots[self.current_frame_index as usize];
-                    slot.command_buffer.bind_graphics_descriptor_sets(
-                        self.device.raw(),
-                        layout,
-                        *first_slot,
-                        &sets,
-                        dynamic_offsets,
-                    );
+                    if self.compute_pass_open {
+                        slot.command_buffer.bind_compute_descriptor_sets(
+                            self.device.raw(),
+                            layout,
+                            *first_slot,
+                            &sets,
+                        );
+                    } else {
+                        slot.command_buffer.bind_graphics_descriptor_sets(
+                            self.device.raw(),
+                            layout,
+                            *first_slot,
+                            &sets,
+                            dynamic_offsets,
+                        );
+                    }
                 }
                 rotex_types::RhiCommand::SetVertexBuffers { mesh, .. } => {
                     let mesh_res = self
@@ -436,12 +425,7 @@ impl VulkanBridge {
                         .map_err(vk_error)?;
                     }
                 }
-                rotex_types::RhiCommand::DispatchCompute(pass) => {
-                    self.record_compute_dispatch(pass)?;
-                }
-                _ => {
-                    return Err(Error::unsupported("command not implemented"));
-                }
+                _ => self.record_phase2(command)?,
             }
         }
         Ok(())
@@ -449,11 +433,65 @@ impl VulkanBridge {
 
     pub fn read_texture(
         &mut self,
-        _id: rotex_types::TextureId,
+        id: rotex_types::TextureId,
     ) -> Result<rotex_types::TextureReadback, Error> {
-        Err(Error::fatal(ErrorKind::Unsupported(
-            "Texture readback not implemented",
-        )))
+        let texture = self
+            .textures
+            .get(&id)
+            .ok_or_else(|| Error::unsupported("texture not found"))?;
+        let width = texture.descriptor.width.max(1);
+        let height = texture.descriptor.height.max(1);
+        let format = texture.descriptor.format;
+        let byte_len = format
+            .expected_byte_len(width, height)
+            .ok_or_else(|| Error::unsupported("texture readback size overflow"))?;
+        let image = texture.image.handle();
+        let staging = crate::backend::vulkan::RotexBuffer::new(
+            self.instance.raw(),
+            self.device.raw(),
+            byte_len as vk::DeviceSize,
+            vk::BufferUsageFlags::TRANSFER_DST,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        )?;
+        self.submit_one_shot(|device, command_buffer| {
+            command_buffer.transition_image_layout(
+                device,
+                image,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                vk::ImageAspectFlags::COLOR,
+            );
+            command_buffer.copy_image_to_buffer(
+                device,
+                image,
+                staging.handle(),
+                0,
+                0,
+                width,
+                height,
+            );
+            command_buffer.transition_image_layout(
+                device,
+                image,
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                vk::ImageAspectFlags::COLOR,
+            );
+            Ok(())
+        })?;
+        let ptr = staging.map(self.device.raw())?;
+        let mut data = vec![0_u8; byte_len];
+        unsafe {
+            std::ptr::copy_nonoverlapping(ptr as *const u8, data.as_mut_ptr(), byte_len);
+        }
+        staging.unmap(self.device.raw());
+        staging.destroy(self.device.raw());
+        Ok(rotex_types::TextureReadback {
+            data,
+            format,
+            width,
+            height,
+        })
     }
 
     pub(super) fn current_command_buffer(
