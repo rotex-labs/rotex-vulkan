@@ -261,6 +261,10 @@ impl VulkanBridge {
                     buf_res.buffer.unmap(self.device.raw());
                 }
                 rotex_types::RhiCommand::BeginRenderPass { pass, .. } => {
+                    if matches!(pass.color_target, rotex_types::PassColorTarget::Texture(_)) {
+                        self.begin_texture_render_pass(pass)?;
+                        continue;
+                    }
                     if pass.uses_depth_attachment() {
                         let _ = self.ensure_depth_targets();
                     }

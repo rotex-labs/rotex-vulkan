@@ -207,6 +207,32 @@ impl VulkanBridge {
                 slot.command_buffer
                     .bind_index_buffer(device, &buf.buffer, *offset, index_type);
             }
+            rotex_types::RhiCommand::Extension {
+                feature,
+                opcode,
+                payload,
+            } => {
+                use rotex_core::Feature;
+                use rotex_types::IndirectDraw;
+                if *feature != IndirectDraw::ID || *opcode != 1 || payload.len() < 16 {
+                    return Err(Error::unsupported("extension command is not implemented"));
+                }
+                let mut buffer_bytes = [0u8; 8];
+                let mut offset_bytes = [0u8; 8];
+                buffer_bytes.copy_from_slice(&payload[0..8]);
+                offset_bytes.copy_from_slice(&payload[8..16]);
+                let buffer_id = BufferId(u64::from_le_bytes(buffer_bytes));
+                let offset = u64::from_le_bytes(offset_bytes);
+                let buffer = self
+                    .buffers
+                    .get(&buffer_id)
+                    .ok_or_else(|| Error::unsupported("indirect buffer not found"))?;
+                let handle = buffer.buffer.handle();
+                let device = self.device.raw();
+                let slot = &self.frame_slots[self.current_frame_index as usize];
+                slot.command_buffer
+                    .draw_indexed_indirect(device, handle, offset);
+            }
             _ => return Err(Error::unsupported("command not implemented")),
         }
         Ok(())

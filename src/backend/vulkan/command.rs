@@ -403,6 +403,23 @@ impl CommandBuffer {
         }
     }
 
+    pub fn draw_indexed_indirect(
+        &self,
+        device: &Device,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+    ) {
+        unsafe {
+            device.logical_device().cmd_draw_indexed_indirect(
+                self.handle,
+                buffer,
+                offset,
+                1,
+                std::mem::size_of::<vk::DrawIndexedIndirectCommand>() as u32,
+            );
+        }
+    }
+
     pub fn draw_vertices(
         &self,
         device: &Device,

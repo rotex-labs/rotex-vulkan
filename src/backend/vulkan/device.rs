@@ -86,7 +86,7 @@ impl Adapter {
                 queue_support,
                 available_features,
                 limits: caps::limits_from_vk(&self.limits),
-                extensions: FeatureSet::empty(),
+                extensions: FeatureSet::INDIRECT_DRAW,
                 core: CAPS,
             },
         })

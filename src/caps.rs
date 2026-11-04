@@ -45,6 +45,6 @@ pub(crate) fn capabilities_for(limits: Limits) -> BackendCapabilities {
     BackendCapabilities {
         core: CAPS,
         limits,
-        extensions: FeatureSet::empty(),
+        extensions: FeatureSet::INDIRECT_DRAW,
     }
 }

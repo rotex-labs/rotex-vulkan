@@ -13,3 +13,7 @@ rotex-types = { version = "0.2.0" }
 ash = "0.38.0"
 ash-window = "0.13.0"
 raw-window-handle = "0.6.2"
+
+[dev-dependencies]
+pollster = "0.4.0"
+rotex-conformance = { version = "0.2.0" }

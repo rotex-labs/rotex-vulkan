@@ -93,6 +93,40 @@ impl PassTargetCache {
 }
 
 impl VulkanBridge {
+    pub(super) fn begin_texture_render_pass(&mut self, pass: &PassDescriptor) -> Result<(), Error> {
+        let uses_depth = pass.uses_depth_attachment();
+        let clear_color = pass.clear_color;
+        let clear_depth = pass.clear_depth;
+        let resolved = self.resolve_pass_targets(pass, &[], uses_depth, 0)?;
+        let mut clear_values = vec![vk::ClearValue {
+            color: vk::ClearColorValue {
+                float32: clear_color,
+            },
+        }];
+        if uses_depth {
+            clear_values.push(vk::ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: clear_depth,
+                    stencil: 0,
+                },
+            });
+        }
+        let targets = self
+            .pass_target_cache
+            .entries
+            .get(&resolved.key)
+            .ok_or(Error::fatal(ErrorKind::NoCompatibleDevice))?;
+        let slot = &self.frame_slots[self.current_frame_index as usize];
+        slot.command_buffer.begin_render_pass(
+            self.device.raw(),
+            &targets.render_pass,
+            &targets.framebuffers[resolved.framebuffer_index],
+            &clear_values,
+        );
+        self.active_render_pass = Some(resolved.render_pass);
+        Ok(())
+    }
+
     pub(super) fn resolve_pass_targets(
         &mut self,
         pass: &PassDescriptor,
