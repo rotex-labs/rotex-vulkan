@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "A Vulkan backend for rotex_core"
-repository = "https://github.com/rotexengine/rotex-vulkan"
+repository = "https://github.com/rotex-labs/rotex-vulkan"
 
 [dependencies]
 async-trait = "0.1.89"
