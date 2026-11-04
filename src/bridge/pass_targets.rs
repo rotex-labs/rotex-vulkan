@@ -18,7 +18,7 @@ use rotex_types::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ColorTargetKey {
-    Swapchain,
+    Presentation,
     Texture(TextureId),
 }
 
@@ -60,7 +60,7 @@ impl PassTargetCache {
         let keys: Vec<_> = self
             .entries
             .keys()
-            .filter(|key| key.color_target == ColorTargetKey::Swapchain)
+            .filter(|key| key.color_target == ColorTargetKey::Presentation)
             .copied()
             .collect();
         for key in keys {
@@ -103,7 +103,7 @@ impl VulkanBridge {
         let depth_load = effective_depth_load(pass, uses_depth);
         let target_role = target_pass_role(remaining_commands, pass.color_target);
         let color_target_key = match pass.color_target {
-            PassColorTarget::Swapchain => ColorTargetKey::Swapchain,
+            PassColorTarget::Presentation => ColorTargetKey::Presentation,
             PassColorTarget::Texture(id) => ColorTargetKey::Texture(id),
         };
         let key = PassTargetKey {
@@ -126,7 +126,7 @@ impl VulkanBridge {
             .get(&key)
             .expect("pass target inserted");
         let framebuffer_index = match pass.color_target {
-            PassColorTarget::Swapchain => image_index as usize,
+            PassColorTarget::Presentation => image_index as usize,
             PassColorTarget::Texture(_) => 0,
         };
         if framebuffer_index >= targets.framebuffers.len() {
@@ -189,7 +189,7 @@ impl VulkanBridge {
         };
 
         match pass.color_target {
-            PassColorTarget::Swapchain => {
+            PassColorTarget::Presentation => {
                 let state = self
                     .surface_state
                     .as_ref()
@@ -223,7 +223,7 @@ impl VulkanBridge {
                     .textures
                     .get(&texture_id)
                     .ok_or(Error::fatal(ErrorKind::NoCompatibleDevice))?;
-                let format = super::resources::map_texture_format(texture.descriptor.format);
+                let format = super::resources::map_texture_format(texture.descriptor.format)?;
                 let render_pass = create_render_pass(device, format, depth_format, config)?;
                 let extent = vk::Extent2D {
                     width: texture.descriptor.width.max(1),
@@ -306,8 +306,10 @@ fn depth_needs_store(
 
 fn color_final_layout(target: PassColorTarget, role: TargetPassRole) -> vk::ImageLayout {
     match (target, role) {
-        (PassColorTarget::Swapchain, TargetPassRole::Terminal) => vk::ImageLayout::PRESENT_SRC_KHR,
-        (PassColorTarget::Swapchain, TargetPassRole::Intermediate) => {
+        (PassColorTarget::Presentation, TargetPassRole::Terminal) => {
+            vk::ImageLayout::PRESENT_SRC_KHR
+        }
+        (PassColorTarget::Presentation, TargetPassRole::Intermediate) => {
             vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
         }
         (PassColorTarget::Texture(_), TargetPassRole::Terminal) => {

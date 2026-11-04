@@ -83,6 +83,7 @@ impl CommandBuffer {
         pipeline_layout: vk::PipelineLayout,
         first_set: u32,
         descriptor_sets: &[vk::DescriptorSet],
+        dynamic_offsets: &[u32],
     ) {
         unsafe {
             device.logical_device().cmd_bind_descriptor_sets(
@@ -91,8 +92,43 @@ impl CommandBuffer {
                 pipeline_layout,
                 first_set,
                 descriptor_sets,
+                dynamic_offsets,
+            );
+        }
+    }
+
+    pub fn bind_compute_pipeline(&self, device: &Device, pipeline: vk::Pipeline) {
+        unsafe {
+            device.logical_device().cmd_bind_pipeline(
+                self.handle,
+                vk::PipelineBindPoint::COMPUTE,
+                pipeline,
+            );
+        }
+    }
+
+    pub fn bind_compute_descriptor_sets(
+        &self,
+        device: &Device,
+        pipeline_layout: vk::PipelineLayout,
+        first_set: u32,
+        descriptor_sets: &[vk::DescriptorSet],
+    ) {
+        unsafe {
+            device.logical_device().cmd_bind_descriptor_sets(
+                self.handle,
+                vk::PipelineBindPoint::COMPUTE,
+                pipeline_layout,
+                first_set,
+                descriptor_sets,
                 &[],
             );
+        }
+    }
+
+    pub fn dispatch(&self, device: &Device, x: u32, y: u32, z: u32) {
+        unsafe {
+            device.logical_device().cmd_dispatch(self.handle, x, y, z);
         }
     }
 

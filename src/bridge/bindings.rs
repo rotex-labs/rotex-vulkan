@@ -57,18 +57,22 @@ fn map_layout_entry(
 ) -> Result<vk::DescriptorSetLayoutBinding<'_>, Error> {
     Ok(vk::DescriptorSetLayoutBinding::default()
         .binding(entry.binding)
-        .descriptor_type(map_binding_type(entry.ty))
+        .descriptor_type(map_binding_type(entry.ty)?)
         .descriptor_count(1)
         .stage_flags(map_shader_stages(entry.visibility)))
 }
 
-pub fn map_binding_type(ty: BindingType) -> vk::DescriptorType {
-    match ty {
+pub fn map_binding_type(ty: BindingType) -> Result<vk::DescriptorType, Error> {
+    Ok(match ty {
         BindingType::UniformBuffer => vk::DescriptorType::UNIFORM_BUFFER,
         BindingType::UniformBufferDynamic => vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
         BindingType::StorageBuffer => vk::DescriptorType::STORAGE_BUFFER,
         BindingType::CombinedImageSampler => vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-    }
+        BindingType::SampledTexture => vk::DescriptorType::SAMPLED_IMAGE,
+        BindingType::Sampler => vk::DescriptorType::SAMPLER,
+        BindingType::StorageTexture => vk::DescriptorType::STORAGE_IMAGE,
+        _ => return Err(Error::unsupported("binding type not implemented")),
+    })
 }
 
 pub fn map_shader_stages(stages: ShaderStageFlags) -> vk::ShaderStageFlags {

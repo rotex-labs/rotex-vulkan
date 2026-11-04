@@ -31,6 +31,10 @@ impl Error {
         }
     }
 
+    pub fn unsupported(message: &'static str) -> Self {
+        Self::fatal(ErrorKind::Unsupported(message))
+    }
+
     pub fn vk_result_code(&self) -> Option<i32> {
         match self.kind {
             ErrorKind::Vulkan(code) => Some(code.as_raw()),

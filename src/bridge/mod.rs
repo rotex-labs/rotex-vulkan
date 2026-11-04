@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 mod bindings;
 mod compute_pipeline_cache;
-mod init;
+pub(crate) mod init;
 mod pass_targets;
 mod pipeline_cache;
 mod render;
@@ -94,6 +94,12 @@ fn map_err_route<T>(r: Result<T, Error>) -> Result<T, CoreError> {
 }
 
 impl GpuBackend for VulkanBridge {
+    fn capabilities(&self) -> rotex_types::BackendCapabilities {
+        crate::caps::capabilities_for(crate::caps::limits_from_vk(
+            &self.device.raw().properties().limits,
+        ))
+    }
+
     fn attach_surface(
         &mut self,
         surface_descriptor: rotex_types::SurfaceDescriptor,
@@ -214,7 +220,7 @@ impl VulkanBridge {
                         vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
                     )?;
                 }
-                rotex_types::RhiCommand::AcquireSwapchainImage => {
+                rotex_types::RhiCommand::AcquirePresentationTarget => {
                     let slot = &self.frame_slots[self.current_frame_index as usize];
                     let sem = &slot.image_available;
                     let state = self
@@ -322,10 +328,10 @@ impl VulkanBridge {
                         .bind_graphics_pipeline(self.device.raw(), pipeline_handle);
                     self.active_pipeline_layout = Some(layout_handle);
                 }
-                rotex_types::RhiCommand::BindDescriptorSets {
-                    first_set,
+                rotex_types::RhiCommand::BindGroups {
+                    first_slot,
                     bind_groups,
-                    ..
+                    dynamic_offsets,
                 } => {
                     let layout = self
                         .active_pipeline_layout
@@ -342,8 +348,9 @@ impl VulkanBridge {
                     slot.command_buffer.bind_graphics_descriptor_sets(
                         self.device.raw(),
                         layout,
-                        *first_set,
+                        *first_slot,
                         &sets,
+                        dynamic_offsets,
                     );
                 }
                 rotex_types::RhiCommand::SetVertexBuffers { mesh, .. } => {
@@ -429,9 +436,12 @@ impl VulkanBridge {
                         .map_err(vk_error)?;
                     }
                 }
-                rotex_types::RhiCommand::TransitionBuffer { .. }
-                | rotex_types::RhiCommand::DispatchCompute(_)
-                | rotex_types::RhiCommand::PushConstants { .. } => {}
+                rotex_types::RhiCommand::DispatchCompute(pass) => {
+                    self.record_compute_dispatch(pass)?;
+                }
+                _ => {
+                    return Err(Error::unsupported("command not implemented"));
+                }
             }
         }
         Ok(())

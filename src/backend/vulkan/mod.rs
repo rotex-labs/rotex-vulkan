@@ -20,7 +20,7 @@ pub use deferred_delete::{DeferredDeleteQueue, DeferredResource};
 pub use descriptor::{DescriptorPool, DescriptorSet};
 pub use descriptor_pool_manager::DescriptorPoolManager;
 pub use descriptor_pool_manager::{general_pool_sizes, storage_pool_sizes};
-pub use device::{Adapter, Device, DeviceDescriptor, QueueAllocation, QueueCategory, QueueRequest};
+pub use device::{Device, DeviceDescriptor, QueueAllocation, QueueCategory, QueueRequest};
 pub use frame_slot::FrameSlot;
 pub use framebuffer::{Framebuffer, FramebufferBuilder};
 pub use graphics_pipeline::{
@@ -34,10 +34,11 @@ pub use swapchain::{Surface, Swapchain};
 pub use sync::{Fence, Semaphore};
 
 use ash::vk;
-use std::cmp::Reverse;
 
 use crate::core::{DebugMessenger, Instance, InstanceOptions};
 use crate::error::{Error, ErrorKind, Severity};
+
+pub(crate) use device::Adapter;
 
 pub(crate) struct VulkanInstance {
     raw: Instance,
@@ -50,43 +51,25 @@ impl VulkanInstance {
         Ok(Self { raw, debug })
     }
 
-    pub(crate) fn request_device(&self, desc: DeviceDescriptor) -> Result<VulkanDevice, Error> {
-        let mut adapters = self.raw.enumerate_adapters();
-        if adapters.is_empty() {
+    pub(crate) fn request_device(
+        &self,
+        adapter: &Adapter,
+        desc: DeviceDescriptor,
+    ) -> Result<VulkanDevice, Error> {
+        if !adapter.supports_queue_requests(&self.raw, &desc.queues) {
             return Err(Error {
                 kind: ErrorKind::NoCompatibleDevice,
                 severity: Severity::Fatal,
             });
         }
-        adapters.sort_by_key(|adapter| Reverse(adapter.selection_score()));
-
-        let mut last_error = None;
-        for adapter in adapters {
-            if !adapter.supports_queue_requests(&self.raw, &desc.queues) {
-                continue;
-            }
-            if desc.enable_swapchain && !adapter.has_swapchain_extension(&self.raw)? {
-                continue;
-            }
-            match adapter.request_device(&self.raw, desc.clone()) {
-                Ok(device) => {
-                    eprintln!(
-                        "[vulkan] selected adapter: {} ({:?})",
-                        adapter.name(),
-                        adapter.device_type()
-                    );
-                    return Ok(VulkanDevice { raw: device });
-                }
-                Err(err) => {
-                    last_error = Some(err);
-                }
-            }
+        if desc.enable_presentation && !adapter.has_swapchain_extension(&self.raw)? {
+            return Err(Error {
+                kind: ErrorKind::NoCompatibleDevice,
+                severity: Severity::Fatal,
+            });
         }
-
-        Err(last_error.unwrap_or(Error {
-            kind: ErrorKind::NoCompatibleDevice,
-            severity: Severity::Fatal,
-        }))
+        let device = adapter.request_device(&self.raw, desc)?;
+        Ok(VulkanDevice { raw: device })
     }
 
     pub(crate) fn create_surface_from_raw(&self, raw_surface: vk::SurfaceKHR) -> VulkanSurface {

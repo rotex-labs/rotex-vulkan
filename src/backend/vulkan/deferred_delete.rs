@@ -11,6 +11,7 @@ pub enum DeferredResource {
     },
 }
 
+#[derive(Default)]
 pub struct DeferredDeleteQueue {
     pending: Vec<(usize, DeferredResource)>,
 }

@@ -47,7 +47,7 @@ impl VulkanBridge {
             self.instance.raw(),
             self.device.raw(),
             ImageDescriptor::default(
-                map_texture_format(desc.format),
+                map_texture_format(desc.format)?,
                 vk::Extent3D {
                     width: desc.width,
                     height: desc.height,
@@ -250,6 +250,7 @@ impl VulkanBridge {
                     let vertex_layout_id =
                         self.intern_vertex_layout(&mesh.vertex_streams[0].layout)?;
                     let id = MeshId(id);
+                    ensure_absent(&self.meshes, &id)?;
                     let (resource, vertex_staging, index_staging) =
                         self.create_mesh_allocation(&mesh, vertex_layout_id)?;
                     if let Some(vs) = vertex_staging {
@@ -273,6 +274,7 @@ impl VulkanBridge {
                 }
                 ResourceCreateDescriptor::Texture { id, texture } => {
                     let id = TextureId(id);
+                    ensure_absent(&self.textures, &id)?;
                     let (resource, staging) = self.create_texture_allocation(&texture)?;
                     texture_staging.push(TextureStagingItem {
                         buffer: staging,
@@ -285,6 +287,7 @@ impl VulkanBridge {
                 }
                 ResourceCreateDescriptor::Material { id, material } => {
                     let id = MaterialId(id);
+                    ensure_absent(&self.materials, &id)?;
                     self.materials.insert(
                         id,
                         super::types::MaterialResource {
@@ -295,6 +298,7 @@ impl VulkanBridge {
                 }
                 ResourceCreateDescriptor::Buffer { id, buffer: buf } => {
                     let id = BufferId(id);
+                    ensure_absent(&self.buffers, &id)?;
                     let usage = map_buffer_usage(&buf);
                     let props = map_memory_location(buf.memory_location);
                     let buffer = RotexBuffer::new(
@@ -318,6 +322,7 @@ impl VulkanBridge {
                 }
                 ResourceCreateDescriptor::BindGroupLayout { id, layout } => {
                     let id = BindGroupLayoutId(id);
+                    ensure_absent(&self.bind_group_layouts, &id)?;
                     let vk_layout = build_set_layout(self.device.raw(), &layout)?;
                     self.bind_group_layouts.insert(
                         id,
@@ -330,6 +335,7 @@ impl VulkanBridge {
                 }
                 ResourceCreateDescriptor::BindGroup { id, group: bg } => {
                     let id = BindGroupId(id);
+                    ensure_absent(&self.bind_groups, &id)?;
                     let layout = self.bind_group_layouts.get(&bg.layout).ok_or(Error::fatal(
                         ErrorKind::Unsupported("bind group layout not found"),
                     ))?;
@@ -360,6 +366,7 @@ impl VulkanBridge {
                                     .iter()
                                     .find(|e| e.binding == *binding)
                                     .map(|e| map_binding_type(e.ty))
+                                    .transpose()?
                                     .unwrap_or(vk::DescriptorType::STORAGE_BUFFER);
                                 set.write_buffer(
                                     self.device.raw(),
@@ -394,9 +401,13 @@ impl VulkanBridge {
                 }
                 ResourceCreateDescriptor::ComputePipeline { id, pipeline } => {
                     let id = ComputePipelineId(id);
+                    ensure_absent(&self.compute_pipelines, &id)?;
                     let result = self.create_compute_pipeline_resource(&pipeline)?;
                     self.compute_pipelines.insert(id, result);
                     handles.push(ResourceHandle::ComputePipeline(id));
+                }
+                _ => {
+                    return Err(Error::unsupported("resource create not implemented"));
                 }
             }
         }
@@ -483,10 +494,9 @@ impl VulkanBridge {
                     updated_texture_descriptor.data = data;
                     let (updated_texture, staging) =
                         self.create_texture_allocation(&updated_texture_descriptor)?;
-                    let previous = self
-                        .textures
-                        .insert(id, updated_texture)
-                        .expect("texture must exist after get check");
+                    let previous = self.textures.insert(id, updated_texture).ok_or_else(|| {
+                        Error::fatal(ErrorKind::Unsupported("texture must exist after get check"))
+                    })?;
                     texture_staging.push(TextureStagingItem {
                         buffer: staging,
                         id,
@@ -512,7 +522,14 @@ impl VulkanBridge {
                     }
                     self.invalidate_material_pipelines(id);
                 }
-                _ => {}
+                ResourceUpdateDescriptor::MeshVertices { .. }
+                | ResourceUpdateDescriptor::Buffer { .. } => {}
+                ResourceUpdateDescriptor::Destroy { handle } => {
+                    self.destroy_resource(handle)?;
+                }
+                _ => {
+                    return Err(Error::unsupported("resource update not implemented"));
+                }
             }
         }
 
@@ -540,6 +557,82 @@ impl VulkanBridge {
             );
         }
 
+        Ok(())
+    }
+
+    fn destroy_resource(&mut self, handle: ResourceHandle) -> Result<(), Error> {
+        match handle {
+            ResourceHandle::Mesh(id) => {
+                let mesh = self
+                    .meshes
+                    .remove(&id)
+                    .ok_or_else(|| Error::unsupported("mesh not found"))?;
+                let frame = self.current_frame_index as usize;
+                self.deferred_delete.defer_after_frame(
+                    frame,
+                    crate::backend::vulkan::DeferredResource::Mesh {
+                        vertex: mesh.vertex_buffer,
+                        index: mesh.index_buffer,
+                    },
+                );
+            }
+            ResourceHandle::Texture(id) => {
+                let texture = self
+                    .textures
+                    .remove(&id)
+                    .ok_or_else(|| Error::unsupported("texture not found"))?;
+                let frame = self.current_frame_index as usize;
+                self.deferred_delete.defer_after_frame(
+                    frame,
+                    crate::backend::vulkan::DeferredResource::Image(texture.image),
+                );
+            }
+            ResourceHandle::Buffer(id) => {
+                let buffer = self
+                    .buffers
+                    .remove(&id)
+                    .ok_or_else(|| Error::unsupported("buffer not found"))?;
+                let frame = self.current_frame_index as usize;
+                self.deferred_delete.defer_after_frame(
+                    frame,
+                    crate::backend::vulkan::DeferredResource::Buffer(buffer.buffer),
+                );
+            }
+            ResourceHandle::Material(id) => {
+                if self.materials.remove(&id).is_none() {
+                    return Err(Error::unsupported("material not found"));
+                }
+                self.invalidate_material_pipelines(id);
+            }
+            ResourceHandle::ComputePipeline(id) => {
+                let pipeline = self
+                    .compute_pipelines
+                    .remove(&id)
+                    .ok_or_else(|| Error::unsupported("compute pipeline not found"))?;
+                pipeline.destroy(self.device.raw(), &self.storage_descriptor_pool);
+            }
+            ResourceHandle::BindGroupLayout(id) => {
+                let layout = self
+                    .bind_group_layouts
+                    .remove(&id)
+                    .ok_or_else(|| Error::unsupported("bind group layout not found"))?;
+                layout.layout.destroy(self.device.raw());
+            }
+            ResourceHandle::BindGroup(id) => {
+                let group = self
+                    .bind_groups
+                    .remove(&id)
+                    .ok_or_else(|| Error::unsupported("bind group not found"))?;
+                self.general_descriptor_pool
+                    .free_sets(self.device.raw(), &[group.descriptor_set])?;
+            }
+            ResourceHandle::Sampler(_)
+            | ResourceHandle::GraphicsPipeline(_)
+            | ResourceHandle::QuerySet(_) => {
+                return Err(Error::unsupported("resource destroy not implemented"));
+            }
+            _ => return Err(Error::unsupported("resource destroy not implemented")),
+        }
         Ok(())
     }
 
@@ -625,13 +718,7 @@ fn validate_vertex_layout(
 }
 
 fn vertex_format_size(format: VertexFormat) -> u64 {
-    match format {
-        VertexFormat::Float32 => 4,
-        VertexFormat::Float32x2 => 8,
-        VertexFormat::Float32x3 => 12,
-        VertexFormat::Float32x4 => 16,
-        VertexFormat::Uint32 => 4,
-    }
+    format.size()
 }
 
 fn vertex_format_tag(format: VertexFormat) -> u8 {
@@ -641,19 +728,43 @@ fn vertex_format_tag(format: VertexFormat) -> u8 {
         VertexFormat::Float32x3 => 3,
         VertexFormat::Float32x4 => 4,
         VertexFormat::Uint32 => 5,
+        VertexFormat::Unorm8x4 => 6,
+        VertexFormat::Float16x2 => 7,
+        VertexFormat::Sint32 => 8,
     }
 }
 
-pub fn map_texture_format(format: TextureFormat) -> vk::Format {
-    match format {
+pub fn map_texture_format(format: TextureFormat) -> Result<vk::Format, Error> {
+    Ok(match format {
+        TextureFormat::R8Unorm => vk::Format::R8_UNORM,
+        TextureFormat::Rg8Unorm => vk::Format::R8G8_UNORM,
         TextureFormat::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
-    }
+        TextureFormat::Rgba8UnormSrgb => vk::Format::R8G8B8A8_SRGB,
+        TextureFormat::Bgra8Unorm => vk::Format::B8G8R8A8_UNORM,
+        TextureFormat::Bgra8UnormSrgb => vk::Format::B8G8R8A8_SRGB,
+        TextureFormat::R32Float => vk::Format::R32_SFLOAT,
+        TextureFormat::Rgba16Float => vk::Format::R16G16B16A16_SFLOAT,
+        TextureFormat::Rgba32Float => vk::Format::R32G32B32A32_SFLOAT,
+        TextureFormat::Depth16Unorm => vk::Format::D16_UNORM,
+        TextureFormat::Depth24Plus | TextureFormat::Depth32Float => vk::Format::D32_SFLOAT,
+        TextureFormat::Depth24PlusStencil8 => vk::Format::D24_UNORM_S8_UINT,
+        _ => return Err(Error::unsupported("texture format not implemented")),
+    })
 }
 
 fn expected_texture_bytes(desc: &TextureDescriptor) -> Option<usize> {
-    (desc.width as usize)
-        .checked_mul(desc.height as usize)?
-        .checked_mul(4)
+    desc.format.expected_byte_len(desc.width, desc.height)
+}
+
+fn ensure_absent<K, V>(map: &std::collections::HashMap<K, V>, key: &K) -> Result<(), Error>
+where
+    K: Eq + std::hash::Hash,
+{
+    if map.contains_key(key) {
+        Err(Error::unsupported("resource id already exists"))
+    } else {
+        Ok(())
+    }
 }
 
 fn validate_texture_descriptor(desc: &TextureDescriptor) -> Result<(), Error> {

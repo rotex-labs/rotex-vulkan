@@ -215,6 +215,9 @@ fn map_vertex_format(format: VertexFormat) -> Result<vk::Format, Error> {
         VertexFormat::Float32x3 => vk::Format::R32G32B32_SFLOAT,
         VertexFormat::Float32x4 => vk::Format::R32G32B32A32_SFLOAT,
         VertexFormat::Uint32 => vk::Format::R32_UINT,
+        VertexFormat::Unorm8x4 => vk::Format::R8G8B8A8_UNORM,
+        VertexFormat::Float16x2 => vk::Format::R16G16_SFLOAT,
+        VertexFormat::Sint32 => vk::Format::R32_SINT,
     };
     Ok(mapped)
 }

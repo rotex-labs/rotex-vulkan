@@ -2,6 +2,12 @@ use std::collections::BTreeMap;
 use std::ffi::CStr;
 
 use ash::vk;
+use rotex_types::{
+    AdapterCapabilities, AdapterId, AdapterInfo, AdapterQueueSupport, DeviceFeatures, FeatureSet,
+    GpuApiBackend, HardwareFamily,
+};
+
+use crate::caps::{self, CAPS};
 
 use crate::core::Instance;
 use crate::error::{Error, ErrorKind, Severity, vk_error};
@@ -22,15 +28,18 @@ pub struct QueueRequest {
 #[derive(Debug, Clone)]
 pub struct DeviceDescriptor {
     pub required_features: vk::PhysicalDeviceFeatures,
-    pub enable_swapchain: bool,
+    pub enable_presentation: bool,
     pub queues: Vec<QueueRequest>,
 }
 
-pub struct Adapter {
+pub(crate) struct Adapter {
     pub(crate) handle: vk::PhysicalDevice,
     name: String,
     device_type: vk::PhysicalDeviceType,
     limits: vk::PhysicalDeviceLimits,
+    vendor_id: u32,
+    device_id: u32,
+    driver_version: u32,
 }
 
 impl Adapter {
@@ -39,12 +48,87 @@ impl Adapter {
         name: String,
         device_type: vk::PhysicalDeviceType,
         limits: vk::PhysicalDeviceLimits,
+        vendor_id: u32,
+        device_id: u32,
+        driver_version: u32,
     ) -> Self {
         Self {
             handle,
             name,
             device_type,
             limits,
+            vendor_id,
+            device_id,
+            driver_version,
+        }
+    }
+
+    pub(crate) fn adapter_info(
+        &self,
+        instance: &Instance,
+        id: AdapterId,
+    ) -> Result<AdapterInfo, Error> {
+        let supports_window_presentation = self.has_swapchain_extension(instance)?;
+        let queue_support = self.queue_support(instance);
+        let available_features = self.available_features(instance);
+
+        Ok(AdapterInfo {
+            id,
+            name: self.name.clone(),
+            hardware_family: map_hardware_family(self.device_type),
+            vendor_id: self.vendor_id,
+            device_id: self.device_id,
+            driver_name: format_driver_version(self.driver_version),
+            driver_info: String::new(),
+            api_backend: GpuApiBackend::Vulkan,
+            capabilities: AdapterCapabilities {
+                supports_window_presentation,
+                queue_support,
+                available_features,
+                limits: caps::limits_from_vk(&self.limits),
+                extensions: FeatureSet::empty(),
+                core: CAPS,
+            },
+        })
+    }
+
+    fn available_features(&self, instance: &Instance) -> DeviceFeatures {
+        let features = unsafe {
+            instance
+                .instance()
+                .get_physical_device_features(self.handle)
+        };
+        DeviceFeatures {
+            sampler_anisotropy: features.sampler_anisotropy != 0,
+            fill_mode_non_solid: features.fill_mode_non_solid != 0,
+            wide_lines: features.wide_lines != 0,
+        }
+    }
+
+    fn queue_support(&self, instance: &Instance) -> AdapterQueueSupport {
+        let queue_families = unsafe {
+            instance
+                .instance()
+                .get_physical_device_queue_family_properties(self.handle)
+        };
+        let mut graphics_queue_count = 0;
+        let mut compute_queue_count = 0;
+        let mut transfer_queue_count = 0;
+        for family in &queue_families {
+            if family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
+                graphics_queue_count = graphics_queue_count.max(family.queue_count);
+            }
+            if family.queue_flags.contains(vk::QueueFlags::COMPUTE) {
+                compute_queue_count = compute_queue_count.max(family.queue_count);
+            }
+            if family.queue_flags.contains(vk::QueueFlags::TRANSFER) {
+                transfer_queue_count = transfer_queue_count.max(family.queue_count);
+            }
+        }
+        AdapterQueueSupport {
+            graphics_queue_count,
+            compute_queue_count,
+            transfer_queue_count,
         }
     }
 
@@ -52,26 +136,8 @@ impl Adapter {
         &self.name
     }
 
-    pub fn device_type(&self) -> vk::PhysicalDeviceType {
-        self.device_type
-    }
-
-    pub fn limits(&self) -> &vk::PhysicalDeviceLimits {
-        &self.limits
-    }
-
     pub fn physical_device(&self) -> vk::PhysicalDevice {
         self.handle
-    }
-
-    pub fn selection_score(&self) -> u32 {
-        match self.device_type {
-            vk::PhysicalDeviceType::DISCRETE_GPU => 400,
-            vk::PhysicalDeviceType::INTEGRATED_GPU => 300,
-            vk::PhysicalDeviceType::VIRTUAL_GPU => 200,
-            vk::PhysicalDeviceType::CPU => 100,
-            _ => 0,
-        }
     }
 
     pub fn has_swapchain_extension(&self, instance: &Instance) -> Result<bool, Error> {
@@ -173,7 +239,7 @@ impl Adapter {
             })
             .map(|(index, _)| index as u32);
 
-        if desc.enable_swapchain {
+        if desc.enable_presentation {
             let extensions = unsafe {
                 instance
                     .instance()
@@ -259,7 +325,7 @@ impl Adapter {
             })
             .collect();
 
-        let device_extensions: Vec<*const i8> = if desc.enable_swapchain {
+        let device_extensions: Vec<*const i8> = if desc.enable_presentation {
             vec![vk::KHR_SWAPCHAIN_NAME.as_ptr()]
         } else {
             Vec::new()
@@ -366,4 +432,21 @@ impl Device {
             self.device.destroy_device(None);
         }
     }
+}
+
+fn map_hardware_family(device_type: vk::PhysicalDeviceType) -> HardwareFamily {
+    match device_type {
+        vk::PhysicalDeviceType::DISCRETE_GPU => HardwareFamily::DiscreteGpu,
+        vk::PhysicalDeviceType::INTEGRATED_GPU => HardwareFamily::IntegratedGpu,
+        vk::PhysicalDeviceType::VIRTUAL_GPU => HardwareFamily::VirtualGpu,
+        vk::PhysicalDeviceType::CPU => HardwareFamily::Cpu,
+        _ => HardwareFamily::Other,
+    }
+}
+
+fn format_driver_version(version: u32) -> String {
+    let major = (version >> 22) & 0x3ff;
+    let minor = (version >> 12) & 0x3ff;
+    let patch = version & 0xfff;
+    format!("{major}.{minor}.{patch}")
 }

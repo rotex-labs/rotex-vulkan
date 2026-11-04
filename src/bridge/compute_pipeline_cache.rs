@@ -105,6 +105,43 @@ impl VulkanBridge {
         Ok(())
     }
 
+    pub(super) fn record_compute_dispatch(
+        &mut self,
+        pass: &rotex_types::ComputePassDescriptor,
+    ) -> Result<(), Error> {
+        self.update_compute_descriptor_sets(pass.pipeline, &pass.buffer_intents)?;
+        let (pipeline, layout, sets) = {
+            let resource = self
+                .compute_pipelines
+                .get(&pass.pipeline)
+                .ok_or_else(|| Error::unsupported("compute pipeline not found"))?;
+            let sets: Vec<_> = resource
+                .descriptor_sets
+                .iter()
+                .map(|set| set.handle())
+                .collect();
+            (
+                resource.pipeline.handle(),
+                resource.pipeline_layout.handle(),
+                sets,
+            )
+        };
+        let device = self.device.raw();
+        let slot = &self.frame_slots[self.current_frame_index as usize];
+        slot.command_buffer.bind_compute_pipeline(device, pipeline);
+        if !sets.is_empty() {
+            slot.command_buffer
+                .bind_compute_descriptor_sets(device, layout, 0, &sets);
+        }
+        slot.command_buffer.dispatch(
+            device,
+            pass.workgroup_count[0],
+            pass.workgroup_count[1],
+            pass.workgroup_count[2],
+        );
+        Ok(())
+    }
+
     pub(super) fn destroy_all_compute_pipelines(&mut self) {
         let pipelines: Vec<_> = self.compute_pipelines.drain().map(|(_, p)| p).collect();
         for pipeline in pipelines {
