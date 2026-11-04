@@ -24,10 +24,6 @@ Stateless Vulkan translator for the same commands as the other backends.
 
 Version 0.2.0. A texture render target can be cleared without a swapchain. Presentation still requires an attached surface.
 
-## Part of Rotex
-
-Rotex is a graphics HAL workspace. See [rotex-dev](https://github.com/rotex-labs/rotex-dev) for the architecture and the other crates.
-
 ## License
 
 Licensed under either of
