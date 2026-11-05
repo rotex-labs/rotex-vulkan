@@ -92,7 +92,7 @@ pub fn storage_pool_sizes() -> Vec<vk::DescriptorPoolSize> {
     }]
 }
 
-/// Pool sizes for uniform buffers, dynamic uniform buffers, storage buffers, and combined image samplers.
+/// Pool sizes for uniform buffers, storage buffers, sampled images, and samplers.
 pub fn general_pool_sizes() -> Vec<vk::DescriptorPoolSize> {
     vec![
         vk::DescriptorPoolSize {
@@ -109,6 +109,14 @@ pub fn general_pool_sizes() -> Vec<vk::DescriptorPoolSize> {
         },
         vk::DescriptorPoolSize {
             ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 256,
+        },
+        vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::SAMPLED_IMAGE,
+            descriptor_count: 256,
+        },
+        vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::SAMPLER,
             descriptor_count: 256,
         },
     ]

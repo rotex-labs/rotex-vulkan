@@ -331,10 +331,17 @@ impl Adapter {
         } else {
             Vec::new()
         };
+        let mut enabled_features = desc.required_features;
+        let available_features = unsafe {
+            instance
+                .instance()
+                .get_physical_device_features(self.handle)
+        };
+        enabled_features.large_points = available_features.large_points;
         let device_create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&device_extensions)
-            .enabled_features(&desc.required_features);
+            .enabled_features(&enabled_features);
 
         let device = unsafe {
             instance

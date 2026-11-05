@@ -66,6 +66,44 @@ impl DescriptorSet {
             device.logical_device().update_descriptor_sets(&write, &[]);
         }
     }
+
+    /// Writes one sampled-image binding at `binding`.
+    pub fn write_sampled_image(
+        &self,
+        device: &Device,
+        binding: u32,
+        image_view: vk::ImageView,
+        image_layout: vk::ImageLayout,
+    ) {
+        let image_info = [vk::DescriptorImageInfo::default()
+            .image_layout(image_layout)
+            .image_view(image_view)];
+
+        let write = [vk::WriteDescriptorSet::default()
+            .dst_set(self.handle)
+            .dst_binding(binding)
+            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+            .image_info(&image_info)];
+
+        unsafe {
+            device.logical_device().update_descriptor_sets(&write, &[]);
+        }
+    }
+
+    /// Writes one sampler binding at `binding`.
+    pub fn write_sampler(&self, device: &Device, binding: u32, sampler: vk::Sampler) {
+        let image_info = [vk::DescriptorImageInfo::default().sampler(sampler)];
+
+        let write = [vk::WriteDescriptorSet::default()
+            .dst_set(self.handle)
+            .dst_binding(binding)
+            .descriptor_type(vk::DescriptorType::SAMPLER)
+            .image_info(&image_info)];
+
+        unsafe {
+            device.logical_device().update_descriptor_sets(&write, &[]);
+        }
+    }
 }
 
 /// Descriptor pool that can free individual sets.

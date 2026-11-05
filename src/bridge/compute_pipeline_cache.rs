@@ -22,7 +22,16 @@ impl VulkanBridge {
         let device = self.device.raw();
         let set_layouts = build_compute_set_layouts(device, &descriptor.bindings)?;
         let layout_handles: Vec<_> = set_layouts.iter().map(|layout| layout.handle()).collect();
-        let pipeline_layout = GraphicsPipelineLayout::new(device, &layout_handles, &[])?;
+        let push_ranges: Vec<vk::PushConstantRange> = descriptor
+            .push_constants
+            .iter()
+            .map(|range| vk::PushConstantRange {
+                stage_flags: super::bindings::map_shader_stages(range.stages),
+                offset: range.offset,
+                size: range.size,
+            })
+            .collect();
+        let pipeline_layout = GraphicsPipelineLayout::new(device, &layout_handles, &push_ranges)?;
 
         let words = spv_bytes_to_words(&descriptor.shader_spv);
         let entry = CString::new(descriptor.entry_point.as_str()).map_err(|_| {

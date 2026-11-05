@@ -56,26 +56,64 @@ pub(super) fn create_render_pass(
         }
     };
 
-    let dependency = vk::SubpassDependency::default()
-        .src_subpass(vk::SUBPASS_EXTERNAL)
-        .dst_subpass(0)
-        .src_stage_mask(
-            vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
-                | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-        )
-        .src_access_mask(vk::AccessFlags::empty())
-        .dst_stage_mask(
-            vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
-                | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-        )
-        .dst_access_mask(
-            vk::AccessFlags::COLOR_ATTACHMENT_WRITE
-                | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-        );
+    // A target that stays shader-readable outside the pass transitions inside the
+    // pass: last frame's sample finishes, then this frame's load and blend, then
+    // the writes are visible to the next sample. A separate image barrier would
+    // drain the queue before the pass starts.
+    let loads_sampled = config.color_initial_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
+    let dependency = if loads_sampled {
+        vk::SubpassDependency::default()
+            .src_subpass(vk::SUBPASS_EXTERNAL)
+            .dst_subpass(0)
+            .src_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
+            .src_access_mask(vk::AccessFlags::SHADER_READ)
+            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .dst_access_mask(
+                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            )
+    } else {
+        vk::SubpassDependency::default()
+            .src_subpass(vk::SUBPASS_EXTERNAL)
+            .dst_subpass(0)
+            .src_stage_mask(
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+            )
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_stage_mask(
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                    | vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+            )
+            .dst_access_mask(
+                vk::AccessFlags::COLOR_ATTACHMENT_WRITE
+                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            )
+    };
+    let exit = if config.color_final_layout == vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL {
+        vk::SubpassDependency::default()
+            .src_subpass(0)
+            .dst_subpass(vk::SUBPASS_EXTERNAL)
+            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+            .dst_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
+            .dst_access_mask(vk::AccessFlags::SHADER_READ)
+    } else {
+        vk::SubpassDependency::default()
+            .src_subpass(0)
+            .dst_subpass(vk::SUBPASS_EXTERNAL)
+            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+            .dst_stage_mask(
+                vk::PipelineStageFlags::FRAGMENT_SHADER
+                    | vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            )
+            .dst_access_mask(vk::AccessFlags::SHADER_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+    };
 
     builder
         .with_subpass(subpass)
         .with_dependency(dependency)
+        .with_dependency(exit)
         .build(device)
         .map_err(vk_error)
 }

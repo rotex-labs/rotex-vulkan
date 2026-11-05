@@ -57,6 +57,7 @@ pub(crate) fn init_bridge(
         device.raw(),
         SamplerDescriptor::default().with_filters(vk::Filter::LINEAR, vk::Filter::LINEAR),
     )?;
+    let gpu_profile = super::gpu_profile::GpuProfiler::from_env(device.raw(), FRAMES_IN_FLIGHT);
 
     Ok(VulkanBridge {
         instance,
@@ -89,6 +90,7 @@ pub(crate) fn init_bridge(
         samplers: HashMap::new(),
         explicit_pipelines: HashMap::new(),
         query_sets: HashMap::new(),
+        shaders: HashMap::new(),
         buffer_states: HashMap::new(),
         texture_states: HashMap::new(),
         compute_pass_open: false,
@@ -96,9 +98,11 @@ pub(crate) fn init_bridge(
         deferred_delete: DeferredDeleteQueue::new(),
         active_render_pass: None,
         active_pass_extent: None,
+        active_color_texture: None,
         active_pipeline_layout: None,
         active_pass: None,
         active_target_role: None,
+        gpu_profile,
     })
 }
 

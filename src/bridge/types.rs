@@ -6,7 +6,7 @@ use crate::backend::vulkan::{
     RotexBuffer, RotexImage, Semaphore, VulkanSurface, VulkanSwapchain,
 };
 use rotex_types::resource::{
-    ComputePipelineDescriptor, MaterialDescriptor, MaterialId, TextureDescriptor,
+    BufferId, ComputePipelineDescriptor, MaterialDescriptor, MaterialId, TextureDescriptor,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -38,6 +38,8 @@ pub(super) struct MeshResource {
     pub(super) index_type: vk::IndexType,
     pub(super) index_count: u32,
     pub(super) vertex_layout_id: VertexLayoutId,
+    /// Vertex bindings after the first. The buffer itself is owned as a `Buffer` resource.
+    pub(super) extra_vertex_buffers: Vec<(u32, BufferId)>,
 }
 
 pub(super) struct MaterialResource {

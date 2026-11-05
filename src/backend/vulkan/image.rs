@@ -179,7 +179,10 @@ impl RotexImage {
         }
     }
 
-    /// Records a barrier to `new_layout` when the image is not already in that layout.
+    /// Records a barrier into `new_layout`. A matching layout is left alone.
+    ///
+    /// Ordering against an earlier use of the same layout belongs to the render
+    /// pass dependency or to a barrier whose source state actually changed.
     pub fn transition_layout(
         &self,
         device: &Device,
@@ -187,7 +190,6 @@ impl RotexImage {
         new_layout: vk::ImageLayout,
     ) {
         let old_layout = self.current_layout.get();
-
         if old_layout == new_layout {
             return;
         }
@@ -201,6 +203,16 @@ impl RotexImage {
         );
 
         self.current_layout.set(new_layout);
+    }
+
+    /// Layout most recently recorded for this image.
+    pub fn layout(&self) -> vk::ImageLayout {
+        self.current_layout.get()
+    }
+
+    /// Records `layout` without a barrier. Used after a render pass moves the image itself.
+    pub fn note_layout(&self, layout: vk::ImageLayout) {
+        self.current_layout.set(layout);
     }
 
     /// Vulkan image handle.

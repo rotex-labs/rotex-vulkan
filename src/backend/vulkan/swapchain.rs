@@ -116,13 +116,22 @@ impl Swapchain {
         }
         .map_err(vk_error)?;
 
-        let preferred_format = [vk::Format::B8G8R8A8_SRGB, vk::Format::R8G8B8A8_SRGB];
+        // UNORM first. An sRGB attachment decodes and encodes on every blend, and the
+        // live point pass is a million blended fragments. Shaders that need gamma
+        // encode it themselves, matching a UNORM image in sRGB color space.
+        let preferred_format = [
+            vk::Format::B8G8R8A8_UNORM,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::Format::B8G8R8A8_SRGB,
+            vk::Format::R8G8B8A8_SRGB,
+        ];
         let preferred_color_space = vk::ColorSpaceKHR::SRGB_NONLINEAR;
-        let surface_format = surface_formats
+        let surface_format = preferred_format
             .iter()
-            .find(|format| {
-                preferred_format.contains(&format.format)
-                    && format.color_space == preferred_color_space
+            .find_map(|wanted| {
+                surface_formats.iter().find(|format| {
+                    format.format == *wanted && format.color_space == preferred_color_space
+                })
             })
             .or_else(|| surface_formats.first())
             .ok_or(Error {

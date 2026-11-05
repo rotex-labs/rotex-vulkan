@@ -10,9 +10,13 @@ use crate::backend::vulkan::{
     VertexInputDescriptor,
 };
 use crate::error::{Error, ErrorKind};
-use rotex_types::resource::{MaterialDescriptor, MaterialId, VertexBufferLayout, VertexFormat};
+use rotex_types::resource::{
+    BlendMode, BlendState, MaterialDescriptor, MaterialId, PrimitiveTopology, VertexBufferLayout,
+    VertexFormat,
+};
 
 impl VulkanBridge {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn create_pipeline_for_material(
         &self,
         material: &MaterialDescriptor,
@@ -21,6 +25,8 @@ impl VulkanBridge {
         render_pass: vk::RenderPass,
         extent: vk::Extent2D,
         depth_mode: DepthMode,
+        topology: PrimitiveTopology,
+        blend: BlendState,
     ) -> Result<super::types::MaterialPipeline, Error> {
         let vert_bytes = material.shaders.vertex.spirv_bytes().ok_or_else(|| {
             Error::fatal(ErrorKind::Unsupported(
@@ -71,8 +77,13 @@ impl VulkanBridge {
                 ShaderStageDescriptor::new(vk::ShaderStageFlags::FRAGMENT, &frag)
                     .with_entry_name(fragment_entry.as_c_str()),
             )
+            .with_input_assembly_state(
+                vk::PipelineInputAssemblyStateCreateInfo::default()
+                    .topology(vulkan_topology(topology))
+                    .primitive_restart_enable(false),
+            )
             .with_color_blend_state(
-                ColorBlendState::default().with_attachment(ColorBlendAttachmentState::default()),
+                ColorBlendState::default().with_attachment(blend_attachment(blend)),
             )
             .with_rasterization_state(
                 RasterizationState::default()
@@ -141,6 +152,8 @@ impl VulkanBridge {
                 render_pass,
                 extent,
                 depth_mode,
+                PrimitiveTopology::TriangleList,
+                BlendState::default(),
             )?;
             self.material_pipelines.insert(pipeline_key, pipeline);
             self.pipelines_by_material
@@ -225,6 +238,43 @@ fn map_vertex_format(format: VertexFormat) -> Result<vk::Format, Error> {
         VertexFormat::Sint32 => vk::Format::R32_SINT,
     };
     Ok(mapped)
+}
+
+fn vulkan_topology(topology: PrimitiveTopology) -> vk::PrimitiveTopology {
+    match topology {
+        PrimitiveTopology::PointList => vk::PrimitiveTopology::POINT_LIST,
+        PrimitiveTopology::LineList => vk::PrimitiveTopology::LINE_LIST,
+        PrimitiveTopology::TriangleList => vk::PrimitiveTopology::TRIANGLE_LIST,
+        PrimitiveTopology::TriangleStrip => vk::PrimitiveTopology::TRIANGLE_STRIP,
+    }
+}
+
+fn blend_attachment(blend: BlendState) -> ColorBlendAttachmentState {
+    let mode = match blend.mode {
+        BlendMode::Additive => BlendMode::Additive,
+        BlendMode::Alpha => BlendMode::Alpha,
+        BlendMode::Replace if blend.enabled => BlendMode::Alpha,
+        BlendMode::Replace => BlendMode::Replace,
+    };
+    let mut state = ColorBlendAttachmentState::default();
+    match mode {
+        BlendMode::Replace => {}
+        BlendMode::Additive => {
+            state.blend_enable = true;
+            state.src_color_blend_factor = vk::BlendFactor::ONE;
+            state.dst_color_blend_factor = vk::BlendFactor::ONE;
+            state.src_alpha_blend_factor = vk::BlendFactor::ONE;
+            state.dst_alpha_blend_factor = vk::BlendFactor::ONE;
+        }
+        BlendMode::Alpha => {
+            state.blend_enable = true;
+            state.src_color_blend_factor = vk::BlendFactor::SRC_ALPHA;
+            state.dst_color_blend_factor = vk::BlendFactor::ONE_MINUS_SRC_ALPHA;
+            state.src_alpha_blend_factor = vk::BlendFactor::ONE;
+            state.dst_alpha_blend_factor = vk::BlendFactor::ONE_MINUS_SRC_ALPHA;
+        }
+    }
+    state
 }
 
 pub(super) fn spv_bytes_to_words(bytes: &[u8]) -> Vec<u32> {

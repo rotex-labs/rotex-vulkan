@@ -2,6 +2,7 @@
 mod bindings;
 mod compute_pipeline_cache;
 mod extended;
+mod gpu_profile;
 pub(crate) mod init;
 mod pass_targets;
 mod pipeline_cache;
@@ -64,6 +65,7 @@ pub struct VulkanBridge {
     explicit_pipelines:
         HashMap<rotex_types::GraphicsPipelineId, extended::ExplicitGraphicsPipeline>,
     query_sets: HashMap<rotex_types::QuerySetId, extended::QuerySetResource>,
+    shaders: HashMap<rotex_types::ShaderId, rotex_types::ShaderArtifact>,
     buffer_states: HashMap<BufferId, rotex_types::ResourceState>,
     texture_states: HashMap<TextureId, rotex_types::ResourceState>,
     compute_pass_open: bool,
@@ -71,12 +73,19 @@ pub struct VulkanBridge {
     deferred_delete: DeferredDeleteQueue,
     active_render_pass: Option<vk::RenderPass>,
     active_pass_extent: Option<vk::Extent2D>,
+    active_color_texture: Option<rotex_types::TextureId>,
     active_pipeline_layout: Option<vk::PipelineLayout>,
     active_pass: Option<rotex_types::PassDescriptor>,
     active_target_role: Option<pass_targets::TargetPassRole>,
+    gpu_profile: Option<gpu_profile::GpuProfiler>,
 }
 
 use ash::vk;
+
+enum ProfileEvent {
+    Compute,
+    Draw(u32),
+}
 
 fn surface_not_attached_error() -> Error {
     Error::fatal(ErrorKind::Unsupported("Surface is not attached"))
@@ -160,6 +169,9 @@ impl VulkanBridge {
             let _ = self.device.raw().logical_device().device_wait_idle();
         }
         self.deferred_delete.destroy_all(self.device.raw());
+        if let Some(profiler) = self.gpu_profile.take() {
+            profiler.destroy(self.device.raw());
+        }
         self.destroy_all_pipelines();
         self.destroy_all_compute_pipelines();
         self.destroy_explicit_pipelines();
@@ -232,6 +244,7 @@ impl VulkanBridge {
                         self.device.raw(),
                         vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
                     )?;
+                    self.profile_begin();
                 }
                 rotex_types::RhiCommand::AcquirePresentationTarget => {
                     let slot = &self.frame_slots[self.current_frame_index as usize];
@@ -302,18 +315,32 @@ impl VulkanBridge {
                         });
                     }
                     let slot = &self.frame_slots[self.current_frame_index as usize];
+                    let extent = state.swapchain.raw().extent();
+                    let render_pass = targets.render_pass.handle();
                     slot.command_buffer.begin_render_pass(
                         self.device.raw(),
                         &targets.render_pass,
                         &targets.framebuffers[idx],
                         &clear_values,
                     );
-                    self.active_render_pass = Some(targets.render_pass.handle());
+                    self.active_render_pass = Some(render_pass);
+                    self.active_pass_extent = Some(extent);
+                    self.active_color_texture = None;
                 }
                 rotex_types::RhiCommand::EndRenderPass => {
                     let slot = &self.frame_slots[self.current_frame_index as usize];
                     slot.command_buffer.end_render_pass(self.device.raw());
+                    if let Some(id) = self.active_color_texture.take() {
+                        if let Some(texture) = self.textures.get(&id) {
+                            texture
+                                .image
+                                .note_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
+                        }
+                        self.texture_states
+                            .insert(id, rotex_types::ResourceState::ShaderRead);
+                    }
                     self.active_render_pass = None;
+                    self.active_pass_extent = None;
                 }
                 rotex_types::RhiCommand::BindGroups {
                     first_slot,
@@ -350,13 +377,32 @@ impl VulkanBridge {
                     }
                 }
                 rotex_types::RhiCommand::SetVertexBuffers { mesh, .. } => {
-                    let mesh_res = self
-                        .meshes
-                        .get(mesh)
-                        .ok_or(Error::fatal(ErrorKind::Unsupported("mesh not found")))?;
+                    let (vertex, extras) = {
+                        let mesh_res = self
+                            .meshes
+                            .get(mesh)
+                            .ok_or(Error::fatal(ErrorKind::Unsupported("mesh not found")))?;
+                        (
+                            mesh_res.vertex_buffer.handle(),
+                            mesh_res.extra_vertex_buffers.clone(),
+                        )
+                    };
+                    let device = self.device.raw();
                     let slot = &self.frame_slots[self.current_frame_index as usize];
-                    slot.command_buffer
-                        .bind_vertex_buffer(self.device.raw(), mesh_res.vertex_buffer.handle());
+                    slot.command_buffer.bind_vertex_buffer(device, vertex);
+                    for (binding, buffer_id) in extras {
+                        let handle = self
+                            .buffers
+                            .get(&buffer_id)
+                            .ok_or(Error::fatal(ErrorKind::Unsupported(
+                                "vertex buffer not found",
+                            )))?
+                            .buffer
+                            .handle();
+                        let slot = &self.frame_slots[self.current_frame_index as usize];
+                        slot.command_buffer
+                            .bind_vertex_buffer_at(device, binding, handle, 0);
+                    }
                 }
                 rotex_types::RhiCommand::SetIndexBuffer { mesh } => {
                     let mesh_res = self
@@ -385,8 +431,10 @@ impl VulkanBridge {
                         *vertex_offset,
                         *first_instance,
                     );
+                    self.profile_draw(*index_count);
                 }
                 rotex_types::RhiCommand::SubmitFrame { present } => {
+                    self.profile_finish();
                     let slot = &self.frame_slots[self.current_frame_index as usize];
                     slot.command_buffer.end(self.device.raw())?;
                     let command_buffers = [slot.command_buffer.handle()];
@@ -436,6 +484,103 @@ impl VulkanBridge {
             }
         }
         Ok(())
+    }
+
+    fn profile_begin(&mut self) {
+        let frame = self.current_frame_index as usize;
+        let pending = self
+            .gpu_profile
+            .as_ref()
+            .filter(|profiler| profiler.is_ready(frame))
+            .map(|profiler| profiler.range(frame));
+        if let Some((pool, first, _count)) = pending {
+            let mut ticks = [0u64; 8];
+            let read = unsafe {
+                self.device.raw().logical_device().get_query_pool_results(
+                    pool,
+                    first,
+                    &mut ticks,
+                    vk::QueryResultFlags::TYPE_64,
+                )
+            };
+            if read.is_ok()
+                && let Some(line) = self
+                    .gpu_profile
+                    .as_mut()
+                    .and_then(|profiler| profiler.accumulate(frame, &ticks))
+            {
+                eprintln!("{line}");
+            }
+        }
+        let range = self
+            .gpu_profile
+            .as_ref()
+            .map(|profiler| profiler.range(frame));
+        let begin = self
+            .gpu_profile
+            .as_mut()
+            .and_then(|profiler| profiler.begin_slot(frame));
+        let device = self.device.raw();
+        let command = &self.frame_slots[frame].command_buffer;
+        if let Some((pool, first, count)) = range {
+            command.reset_query_range(device, pool, first, count);
+        }
+        if let Some((pool, query)) = begin {
+            command.write_timestamp_stage(device, vk::PipelineStageFlags::TOP_OF_PIPE, pool, query);
+        }
+    }
+
+    fn profile_compute(&mut self) {
+        self.profile_write(
+            vk::PipelineStageFlags::COMPUTE_SHADER,
+            ProfileEvent::Compute,
+        );
+    }
+
+    fn profile_draw(&mut self, vertices: u32) {
+        self.profile_write(
+            vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            ProfileEvent::Draw(vertices),
+        );
+    }
+
+    fn profile_finish(&mut self) {
+        let frame = self.current_frame_index as usize;
+        let writes = self
+            .gpu_profile
+            .as_mut()
+            .map(|profiler| profiler.finish_slot(frame))
+            .unwrap_or_default();
+        let device = self.device.raw();
+        let command = &self.frame_slots[frame].command_buffer;
+        for (pool, query) in writes {
+            command.write_timestamp_stage(
+                device,
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                pool,
+                query,
+            );
+        }
+    }
+
+    fn profile_write(&mut self, stage: vk::PipelineStageFlags, event: ProfileEvent) {
+        let frame = self.current_frame_index as usize;
+        let write = match event {
+            ProfileEvent::Compute => self
+                .gpu_profile
+                .as_mut()
+                .and_then(|profiler| profiler.note_compute(frame)),
+            ProfileEvent::Draw(vertices) => self
+                .gpu_profile
+                .as_mut()
+                .and_then(|profiler| profiler.note_draw(frame, vertices)),
+        };
+        let Some((pool, query)) = write else {
+            return;
+        };
+        let device = self.device.raw();
+        let command = &self.frame_slots[frame].command_buffer;
+        command.write_timestamp_stage(device, stage, pool, query);
     }
 
     /// Copies a color texture back to the CPU.

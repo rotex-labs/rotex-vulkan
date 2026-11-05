@@ -479,13 +479,30 @@ impl CommandBuffer {
 
     /// Writes a timestamp into query `index`.
     pub fn write_timestamp(&self, device: &Device, pool: vk::QueryPool, index: u32) {
+        self.write_timestamp_stage(device, vk::PipelineStageFlags::ALL_COMMANDS, pool, index);
+    }
+
+    /// Writes a timestamp once `stage` has completed for earlier commands.
+    pub fn write_timestamp_stage(
+        &self,
+        device: &Device,
+        stage: vk::PipelineStageFlags,
+        pool: vk::QueryPool,
+        index: u32,
+    ) {
         unsafe {
-            device.logical_device().cmd_write_timestamp(
-                self.handle,
-                vk::PipelineStageFlags::ALL_COMMANDS,
-                pool,
-                index,
-            );
+            device
+                .logical_device()
+                .cmd_write_timestamp(self.handle, stage, pool, index);
+        }
+    }
+
+    /// Resets `count` queries starting at `first`.
+    pub fn reset_query_range(&self, device: &Device, pool: vk::QueryPool, first: u32, count: u32) {
+        unsafe {
+            device
+                .logical_device()
+                .cmd_reset_query_pool(self.handle, pool, first, count);
         }
     }
 

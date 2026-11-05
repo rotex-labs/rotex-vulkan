@@ -35,6 +35,7 @@ impl VulkanBridge {
             rotex_types::RhiCommand::EndComputePass => {
                 self.compute_pass_open = false;
                 self.active_compute_pipeline = None;
+                self.profile_compute();
             }
             rotex_types::RhiCommand::SetComputePipeline { pipeline } => {
                 self.bind_compute_pipeline_command(*pipeline)?;
@@ -111,6 +112,7 @@ impl VulkanBridge {
                     *first_vertex,
                     *first_instance,
                 );
+                self.profile_draw(*vertex_count);
             }
             rotex_types::RhiCommand::CopyBufferToBuffer {
                 src,
@@ -405,7 +407,17 @@ impl VulkanBridge {
                     .ok_or_else(|| Error::unsupported("barrier buffer not found"))?;
                 let size = buffer.size;
                 let handle = buffer.buffer.handle();
-                let (src_access, src_stage) = buffer_access(previous);
+                // VertexShaderRead publishes the compute write in this command buffer.
+                // Using the tracked previous state as the source would wait on vertex
+                // fetch and stop the next frame's compute from overlapping the draw.
+                let (src_access, src_stage) = if state == ResourceState::VertexShaderRead {
+                    (
+                        vk::AccessFlags::SHADER_WRITE,
+                        vk::PipelineStageFlags::COMPUTE_SHADER,
+                    )
+                } else {
+                    buffer_access(previous)
+                };
                 let (dst_access, dst_stage) = buffer_access(state);
                 let device = self.device.raw();
                 let slot = &self.frame_slots[self.current_frame_index as usize];
@@ -611,6 +623,8 @@ impl VulkanBridge {
             render_pass,
             extent,
             depth_mode,
+            descriptor.topology,
+            descriptor.blend,
         )?;
         let handles = (compiled.pipeline.handle(), compiled.layout.handle());
         self.explicit_pipelines
@@ -707,7 +721,9 @@ pub(super) fn buffer_access(state: ResourceState) -> (vk::AccessFlags, vk::Pipel
         ),
         ResourceState::ShaderRead | ResourceState::Uniform => (
             vk::AccessFlags::SHADER_READ,
-            vk::PipelineStageFlags::VERTEX_SHADER | vk::PipelineStageFlags::FRAGMENT_SHADER,
+            vk::PipelineStageFlags::VERTEX_SHADER
+                | vk::PipelineStageFlags::FRAGMENT_SHADER
+                | vk::PipelineStageFlags::COMPUTE_SHADER,
         ),
         ResourceState::ShaderWrite => (
             vk::AccessFlags::SHADER_WRITE,
@@ -716,6 +732,12 @@ pub(super) fn buffer_access(state: ResourceState) -> (vk::AccessFlags, vk::Pipel
         ResourceState::VertexBuffer => (
             vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
             vk::PipelineStageFlags::VERTEX_INPUT,
+        ),
+        // Destination mask matches a compute write consumed by a draw and by the
+        // next dispatch. The source mask is applied in `record_barrier`.
+        ResourceState::VertexShaderRead => (
+            vk::AccessFlags::VERTEX_ATTRIBUTE_READ | vk::AccessFlags::SHADER_READ,
+            vk::PipelineStageFlags::VERTEX_INPUT | vk::PipelineStageFlags::COMPUTE_SHADER,
         ),
         ResourceState::IndexBuffer => (
             vk::AccessFlags::INDEX_READ,

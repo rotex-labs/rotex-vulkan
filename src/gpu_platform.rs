@@ -1,5 +1,6 @@
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 
+use raw_window_handle::RawDisplayHandle;
 use rotex_core::{
     Error as CoreError, ErrorKind as CoreErrorKind, GpuPlatform, Severity as CoreSeverity,
 };
@@ -32,8 +33,13 @@ impl GpuPlatform for VulkanGpuPlatform {
             enable_debug_utils: platform_descriptor.enable_validation,
             ..Default::default()
         };
-        let extension_names = platform_descriptor
-            .platform_extensions
+        let mut extension_list = platform_descriptor.platform_extensions;
+        if let Some(display_handle) = platform_descriptor.display_handle {
+            extension_list.extend(surface_extension_names(display_handle).map_err(to_core_error)?);
+        }
+        extension_list.sort();
+        extension_list.dedup();
+        let extension_names = extension_list
             .iter()
             .map(|name| {
                 CString::new(name.as_str()).map_err(|_| {
@@ -87,6 +93,22 @@ impl GpuPlatform for VulkanGpuPlatform {
             .map_err(to_core_error)?;
         init_bridge(self.instance, device).map_err(to_core_error)
     }
+}
+
+fn surface_extension_names(display_handle: RawDisplayHandle) -> Result<Vec<String>, Error> {
+    let names = ash_window::enumerate_required_extensions(display_handle).map_err(|_| {
+        Error::fatal(ErrorKind::Unsupported(
+            "surface extensions unavailable for this display",
+        ))
+    })?;
+    Ok(names
+        .iter()
+        .map(|name| {
+            // The pointers stay valid for the process; they address static extension names.
+            let text = unsafe { CStr::from_ptr(*name) };
+            text.to_string_lossy().into_owned()
+        })
+        .collect())
 }
 
 fn to_core_error(error: Error) -> CoreError {

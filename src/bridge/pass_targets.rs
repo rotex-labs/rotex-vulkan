@@ -35,6 +35,8 @@ pub(super) struct PassTargetKey {
     depth_load: DepthAttachmentLoad,
     uses_depth: bool,
     target_role: TargetPassRole,
+    /// `vk::ImageLayout` of the color attachment when the pass was created.
+    color_initial_layout: i32,
 }
 
 pub(super) struct ResolvedPassTarget {
@@ -124,7 +126,34 @@ impl VulkanBridge {
             &clear_values,
         );
         self.active_render_pass = Some(resolved.render_pass);
+        self.active_pass_extent = Some(self.pass_color_extent(pass)?);
+        self.active_color_texture = match pass.color_target {
+            PassColorTarget::Texture(id) => Some(id),
+            PassColorTarget::Presentation => None,
+        };
         Ok(())
+    }
+
+    fn pass_color_extent(&self, pass: &PassDescriptor) -> Result<vk::Extent2D, Error> {
+        match pass.color_target {
+            PassColorTarget::Texture(id) => {
+                let texture = self
+                    .textures
+                    .get(&id)
+                    .ok_or(Error::fatal(ErrorKind::NoCompatibleDevice))?;
+                Ok(vk::Extent2D {
+                    width: texture.descriptor.width.max(1),
+                    height: texture.descriptor.height.max(1),
+                })
+            }
+            PassColorTarget::Presentation => {
+                let state = self
+                    .surface_state
+                    .as_ref()
+                    .ok_or_else(surface_not_attached_error)?;
+                Ok(state.swapchain.raw().extent())
+            }
+        }
     }
 
     pub(super) fn resolve_pass_targets(
@@ -146,6 +175,7 @@ impl VulkanBridge {
             depth_load,
             uses_depth,
             target_role,
+            color_initial_layout: self.color_attachment_initial_layout(pass).as_raw(),
         };
 
         if !self.pass_target_cache.entries.contains_key(&key) {
@@ -207,9 +237,10 @@ impl VulkanBridge {
 
         let color_final_layout = color_final_layout(pass.color_target, target_role);
         let vk_color_load = map_color_load(pass.color_load);
+        let color_initial_layout = self.color_attachment_initial_layout(pass);
         let config = RenderPassConfig {
             color_load: vk_color_load,
-            color_initial_layout: color_initial_layout(vk_color_load),
+            color_initial_layout,
             color_final_layout,
             depth_load: depth_format.map(|_| map_depth_load(depth_load)),
             depth_store: if depth_stored {
@@ -367,6 +398,24 @@ fn map_depth_load(load: DepthAttachmentLoad) -> vk::AttachmentLoadOp {
         DepthAttachmentLoad::Clear => vk::AttachmentLoadOp::CLEAR,
         DepthAttachmentLoad::Load => vk::AttachmentLoadOp::LOAD,
         DepthAttachmentLoad::None => vk::AttachmentLoadOp::DONT_CARE,
+    }
+}
+
+impl VulkanBridge {
+    fn color_attachment_initial_layout(&self, pass: &PassDescriptor) -> vk::ImageLayout {
+        let fallback = color_initial_layout(map_color_load(pass.color_load));
+        let PassColorTarget::Texture(id) = pass.color_target else {
+            return fallback;
+        };
+        let Some(texture) = self.textures.get(&id) else {
+            return fallback;
+        };
+        let current = texture.image.layout();
+        if current == vk::ImageLayout::UNDEFINED {
+            fallback
+        } else {
+            current
+        }
     }
 }
 
