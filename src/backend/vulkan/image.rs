@@ -6,20 +6,32 @@ use crate::core::Instance;
 use crate::error::vk_error;
 use crate::{Error, ErrorKind};
 
+/// Image to allocate, and the view created with it.
 pub struct ImageDescriptor {
+    /// Texel format.
     pub format: vk::Format,
+    /// Width, height, and depth in texels.
     pub extent: vk::Extent3D,
+    /// How the image will be used.
     pub usage: vk::ImageUsageFlags,
+    /// Memory properties required for the image allocation.
     pub properties: vk::MemoryPropertyFlags,
+    /// Number of mip levels.
     pub mip_levels: u32,
+    /// Number of array layers.
     pub array_layers: u32,
+    /// 1D, 2D, or 3D image.
     pub image_type: vk::ImageType,
+    /// View created for the image.
     pub view_type: vk::ImageViewType,
+    /// Linear or optimal tiling.
     pub tiling: vk::ImageTiling,
+    /// Samples per texel.
     pub samples: vk::SampleCountFlags,
 }
 
 impl ImageDescriptor {
+    /// 2D image with one mip level, one array layer, optimal tiling, and one sample.
     pub fn default(
         format: vk::Format,
         extent: vk::Extent3D,
@@ -40,11 +52,13 @@ impl ImageDescriptor {
         }
     }
 
+    /// Sets the mip-level count.
     pub fn with_mip_levels(mut self, levels: u32) -> Self {
         self.mip_levels = levels;
         self
     }
 
+    /// Sets the array-layer count and the view type that matches it.
     pub fn with_array_layers(mut self, layers: u32, view_type: vk::ImageViewType) -> Self {
         self.array_layers = layers;
         self.view_type = view_type;
@@ -52,6 +66,7 @@ impl ImageDescriptor {
     }
 }
 
+/// Image, its bound memory, and a view of the whole resource.
 pub struct RotexImage {
     image_handle: vk::Image,
     device_memory: vk::DeviceMemory,
@@ -61,6 +76,7 @@ pub struct RotexImage {
 }
 
 impl RotexImage {
+    /// Creates the image described by `desc` and a view of it.
     pub fn new(instance: &Instance, device: &Device, desc: ImageDescriptor) -> Result<Self, Error> {
         let image_create_info = vk::ImageCreateInfo::default()
             .image_type(desc.image_type)
@@ -163,6 +179,7 @@ impl RotexImage {
         }
     }
 
+    /// Records a barrier to `new_layout` when the image is not already in that layout.
     pub fn transition_layout(
         &self,
         device: &Device,
@@ -186,14 +203,17 @@ impl RotexImage {
         self.current_layout.set(new_layout);
     }
 
+    /// Vulkan image handle.
     pub fn handle(&self) -> vk::Image {
         self.image_handle
     }
 
+    /// View of the whole image.
     pub fn view(&self) -> vk::ImageView {
         self.image_view
     }
 
+    /// Destroys the view, the image, and its memory.
     pub fn destroy(&self, device: &Device) {
         unsafe {
             device
@@ -209,17 +229,29 @@ impl RotexImage {
     }
 }
 
+/// Sampler state.
 pub struct SamplerDescriptor {
+    /// Magnification filter.
     pub mag_filter: vk::Filter,
+    /// Minification filter.
     pub min_filter: vk::Filter,
+    /// Enables anisotropic filtering.
     pub anisotropy_enable: bool,
+    /// Maximum anisotropy, used when [`Self::anisotropy_enable`] is set.
     pub max_anisotropy: f32,
+    /// Address mode for the U coordinate.
     pub address_mode_u: vk::SamplerAddressMode,
+    /// Address mode for the V coordinate.
     pub address_mode_v: vk::SamplerAddressMode,
+    /// Address mode for the W coordinate.
     pub address_mode_w: vk::SamplerAddressMode,
+    /// Border color used by clamp-to-border address modes.
     pub border_color: vk::BorderColor,
+    /// Samples with unnormalized coordinates when set.
     pub unnormalized_coordinates: bool,
+    /// Enables a comparison against a reference value.
     pub compare_enable: bool,
+    /// Filter used between mip levels.
     pub mipmap_mode: vk::SamplerMipmapMode,
 }
 
@@ -242,6 +274,7 @@ impl Default for SamplerDescriptor {
 }
 
 impl SamplerDescriptor {
+    /// Sets the U, V, and W address modes.
     pub fn with_address_modes(
         mut self,
         u: vk::SamplerAddressMode,
@@ -254,44 +287,52 @@ impl SamplerDescriptor {
         self
     }
 
+    /// Enables or disables anisotropic filtering.
     pub fn with_anisotropy(mut self, enable: bool, max_anisotropy: f32) -> Self {
         self.anisotropy_enable = enable;
         self.max_anisotropy = max_anisotropy;
         self
     }
 
+    /// Sets the magnification and minification filters.
     pub fn with_filters(mut self, mag_filter: vk::Filter, min_filter: vk::Filter) -> Self {
         self.mag_filter = mag_filter;
         self.min_filter = min_filter;
         self
     }
 
+    /// Sets the border color.
     pub fn with_border_color(mut self, border_color: vk::BorderColor) -> Self {
         self.border_color = border_color;
         self
     }
 
+    /// Selects normalized or unnormalized sample coordinates.
     pub fn with_unnormalized_coordinates(mut self, unnormalized: bool) -> Self {
         self.unnormalized_coordinates = unnormalized;
         self
     }
 
+    /// Enables or disables comparison sampling.
     pub fn with_compare_enable(mut self, compare_enable: bool) -> Self {
         self.compare_enable = compare_enable;
         self
     }
 
+    /// Sets the filter used between mip levels.
     pub fn with_mipmap_mode(mut self, mipmap_mode: vk::SamplerMipmapMode) -> Self {
         self.mipmap_mode = mipmap_mode;
         self
     }
 }
 
+/// GPU sampler.
 pub struct RotexSampler {
     handle: vk::Sampler,
 }
 
 impl RotexSampler {
+    /// Creates a sampler from `descriptor`.
     pub fn new(device: &Device, descriptor: SamplerDescriptor) -> Result<Self, Error> {
         let create_info = vk::SamplerCreateInfo::default()
             .mag_filter(descriptor.mag_filter)
@@ -313,10 +354,12 @@ impl RotexSampler {
         Ok(Self { handle })
     }
 
+    /// Vulkan sampler handle.
     pub fn handle(&self) -> vk::Sampler {
         self.handle
     }
 
+    /// Destroys the sampler.
     pub fn destroy(&self, device: &Device) {
         unsafe { device.logical_device().destroy_sampler(self.handle, None) };
     }

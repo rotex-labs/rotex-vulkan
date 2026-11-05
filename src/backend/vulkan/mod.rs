@@ -1,3 +1,7 @@
+//! Devices, swapchains, pipelines, descriptors, and command buffers.
+//!
+//! [`VulkanBridge`](crate::VulkanBridge) owns the objects created here and
+//! records [`rotex_types::RhiCommand`] values into [`CommandBuffer`]s.
 mod buffer;
 mod command;
 mod compute_pipeline;

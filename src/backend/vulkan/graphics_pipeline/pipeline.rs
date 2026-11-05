@@ -9,11 +9,13 @@ use super::vertex::VertexInputDescriptor;
 use crate::error::vk_error;
 use crate::{Error, ErrorKind};
 
+/// Compiled graphics pipeline.
 pub struct GraphicsPipeline {
     handle: vk::Pipeline,
 }
 
 impl GraphicsPipeline {
+    /// Creates a graphics pipeline from raw Vulkan create info.
     pub fn new(
         device: &Device,
         create_info: &vk::GraphicsPipelineCreateInfo,
@@ -31,10 +33,12 @@ impl GraphicsPipeline {
         Ok(Self { handle })
     }
 
+    /// Vulkan pipeline handle.
     pub fn handle(&self) -> vk::Pipeline {
         self.handle
     }
 
+    /// Destroys the pipeline.
     pub fn destroy(&self, device: &Device) {
         unsafe {
             device.logical_device().destroy_pipeline(self.handle, None);
@@ -42,6 +46,7 @@ impl GraphicsPipeline {
     }
 }
 
+/// Graphics pipeline state assembled before compilation.
 pub struct GraphicsPipelineBuilder<'a> {
     shader_stages: Vec<ShaderStageDescriptor<'a>>,
     render_pass: Option<vk::RenderPass>,
@@ -78,30 +83,36 @@ impl<'a> Default for GraphicsPipelineBuilder<'a> {
 }
 
 impl<'a> GraphicsPipelineBuilder<'a> {
+    /// Starts from triangle-list defaults.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Appends a shader stage.
     pub fn with_shader_stage(mut self, stage: ShaderStageDescriptor<'a>) -> Self {
         self.shader_stages.push(stage);
         self
     }
 
+    /// Sets the compatible render pass.
     pub fn with_render_pass(mut self, render_pass: vk::RenderPass) -> Self {
         self.render_pass = Some(render_pass);
         self
     }
 
+    /// Sets the pipeline layout.
     pub fn with_layout(mut self, layout: vk::PipelineLayout) -> Self {
         self.layout = Some(layout);
         self
     }
 
+    /// Sets vertex bindings and attributes.
     pub fn with_vertex_input_state(mut self, state: VertexInputDescriptor) -> Self {
         self.vertex_input_state = state;
         self
     }
 
+    /// Sets primitive topology and restart.
     pub fn with_input_assembly_state(
         mut self,
         state: vk::PipelineInputAssemblyStateCreateInfo<'a>,
@@ -110,46 +121,55 @@ impl<'a> GraphicsPipelineBuilder<'a> {
         self
     }
 
+    /// Sets the viewport.
     pub fn with_viewport_state(mut self, viewport: Viewport) -> Self {
         self.viewport_state = viewport;
         self
     }
 
+    /// Sets rasterizer state.
     pub fn with_rasterization_state(mut self, state: RasterizationState) -> Self {
         self.rasterization_state = state;
         self
     }
 
+    /// Sets multisample state.
     pub fn with_multisample_state(mut self, state: MultisampleState) -> Self {
         self.multisample_state = state;
         self
     }
 
+    /// Sets color blending.
     pub fn with_color_blend_state(mut self, state: ColorBlendState) -> Self {
         self.color_blend_state = state;
         self
     }
 
+    /// Selects the subpass this pipeline is used in.
     pub fn with_subpass(mut self, subpass: u32) -> Self {
         self.subpass = Some(subpass);
         self
     }
 
+    /// Sets the viewport size in pixels.
     pub fn with_extent(mut self, width: u32, height: u32) -> Self {
         self.viewport_state = self.viewport_state.with_extent(width, height);
         self
     }
 
+    /// Enables depth and stencil state.
     pub fn with_depth_stencil_state(mut self, state: DepthStencilState) -> Self {
         self.depth_stencil_state = Some(state);
         self
     }
 
+    /// Makes the viewport and scissor dynamic when `enabled` is set.
     pub fn with_dynamic_viewport(mut self, enabled: bool) -> Self {
         self.dynamic_viewport = enabled;
         self
     }
 
+    /// Compiles the pipeline.
     pub fn build(self, device: &Device) -> Result<GraphicsPipeline, Error> {
         if self.shader_stages.is_empty() {
             return Err(Error::fatal(ErrorKind::Vulkan(

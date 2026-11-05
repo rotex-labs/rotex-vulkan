@@ -31,6 +31,7 @@ use types::{
     TextureResource, VertexLayoutId,
 };
 
+/// Translates [`rotex_types::RhiCommand`] values into Vulkan calls.
 pub struct VulkanBridge {
     instance: VulkanInstance,
     device: VulkanDevice,
@@ -153,6 +154,7 @@ impl GpuBackend for VulkanBridge {
 }
 
 impl VulkanBridge {
+    /// Waits until the device is idle, then destroys every GPU object the bridge owns.
     pub fn destroy_all(mut self) {
         unsafe {
             let _ = self.device.raw().logical_device().device_wait_idle();
@@ -208,6 +210,7 @@ impl VulkanBridge {
         self.instance.destroy();
     }
 
+    /// Records `commands` and submits a frame when the list asks for it.
     pub fn execute(&mut self, commands: &[rotex_types::RhiCommand]) -> Result<(), Error> {
         for command in commands {
             match command {
@@ -435,6 +438,7 @@ impl VulkanBridge {
         Ok(())
     }
 
+    /// Copies a color texture back to the CPU.
     pub fn read_texture(
         &mut self,
         id: rotex_types::TextureId,

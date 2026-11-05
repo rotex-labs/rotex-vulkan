@@ -236,6 +236,7 @@ impl VulkanBridge {
         ))
     }
 
+    /// Creates the buffers, images, meshes, and pipelines named in `descriptor`.
     pub fn create_resources(
         &mut self,
         descriptor: ResourceBatchCreate,
@@ -468,6 +469,7 @@ impl VulkanBridge {
         Ok(CreatedResources { handles })
     }
 
+    /// Replaces the contents or parameters of resources the bridge already holds.
     pub fn update_resources(&mut self, descriptor: ResourceBatchUpdate) -> Result<(), Error> {
         let mut texture_staging = Vec::new();
         let mut mesh_staging = Vec::new();

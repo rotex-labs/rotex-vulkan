@@ -4,6 +4,7 @@ use super::device::Device;
 use crate::core::Instance;
 use crate::error::{Error, ErrorKind};
 
+/// Device buffer and the memory bound to it.
 pub struct RotexBuffer {
     handle: vk::Buffer,
     device_memory: vk::DeviceMemory,
@@ -11,6 +12,7 @@ pub struct RotexBuffer {
 }
 
 impl RotexBuffer {
+    /// Creates a buffer of `size` bytes and binds memory with `properties`.
     pub fn new(
         instance: &Instance,
         device: &Device,
@@ -58,6 +60,7 @@ impl RotexBuffer {
         })
     }
 
+    /// Maps the buffer for CPU writes. The memory must be host-visible.
     pub fn map(&self, device: &Device) -> Result<*mut std::ffi::c_void, Error> {
         unsafe {
             device.logical_device().map_memory(
@@ -71,18 +74,22 @@ impl RotexBuffer {
         .map_err(Error::fatal)
     }
 
+    /// Unmaps a buffer mapped with [`Self::map`].
     pub fn unmap(&self, device: &Device) {
         unsafe { device.logical_device().unmap_memory(self.device_memory) };
     }
 
+    /// Vulkan buffer handle.
     pub fn handle(&self) -> vk::Buffer {
         self.handle
     }
 
+    /// Size in bytes.
     pub fn size(&self) -> vk::DeviceSize {
         self.size
     }
 
+    /// Destroys the buffer and frees its memory.
     pub fn destroy(&self, device: &Device) {
         unsafe {
             device.logical_device().destroy_buffer(self.handle, None);

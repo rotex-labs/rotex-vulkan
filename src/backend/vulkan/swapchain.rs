@@ -5,25 +5,30 @@ use super::sync::Semaphore;
 use crate::core::Instance;
 use crate::error::{Error, ErrorKind, Severity, vk_error};
 
+/// KHR surface, plus the loader used to destroy it.
 pub struct Surface {
     pub(crate) loader: ash::khr::surface::Instance,
     pub(crate) surface: vk::SurfaceKHR,
 }
 
 impl Surface {
+    /// Wraps an existing surface handle.
     pub fn new(instance: &Instance, surface: vk::SurfaceKHR) -> Self {
         let loader = ash::khr::surface::Instance::new(instance.entry(), instance.instance());
         Self { loader, surface }
     }
 
+    /// Surface extension loader.
     pub fn loader(&self) -> &ash::khr::surface::Instance {
         &self.loader
     }
 
+    /// Vulkan surface handle.
     pub fn handle(&self) -> vk::SurfaceKHR {
         self.surface
     }
 
+    /// Destroys the surface.
     pub fn destroy(&mut self) {
         unsafe {
             self.loader.destroy_surface(self.surface, None);
@@ -31,6 +36,7 @@ impl Surface {
     }
 }
 
+/// Swapchain images and views for one surface.
 pub struct Swapchain {
     pub(crate) loader: ash::khr::swapchain::Device,
     pub(crate) swapchain: vk::SwapchainKHR,
@@ -56,6 +62,7 @@ fn clamp_extent(extent: vk::Extent2D, capabilities: &vk::SurfaceCapabilitiesKHR)
 }
 
 impl Swapchain {
+    /// Creates a swapchain sized from `extent_hint` and the surface capabilities.
     pub fn new(
         instance: &Instance,
         device: &Device,
@@ -71,6 +78,7 @@ impl Swapchain {
         )
     }
 
+    /// Creates a swapchain that retires `old_swapchain`.
     pub fn new_with_old(
         instance: &Instance,
         device: &Device,
@@ -193,6 +201,7 @@ impl Swapchain {
         })
     }
 
+    /// Acquires the next image. The boolean is the suboptimal flag.
     pub fn acquire_next_image(&self, semaphore: &Semaphore) -> Result<(u32, bool), Error> {
         unsafe {
             self.loader.acquire_next_image(
@@ -205,6 +214,7 @@ impl Swapchain {
         .map_err(vk_error)
     }
 
+    /// Presents `image_index` after `wait_semaphore`. The boolean is the suboptimal flag.
     pub fn present(
         &self,
         queue: vk::Queue,
@@ -223,26 +233,32 @@ impl Swapchain {
         unsafe { self.loader.queue_present(queue, &present_info) }.map_err(vk_error)
     }
 
+    /// Swapchain image format.
     pub fn format(&self) -> vk::Format {
         self.format
     }
 
+    /// Swapchain color space.
     pub fn color_space(&self) -> vk::ColorSpaceKHR {
         self.color_space
     }
 
+    /// Swapchain size in pixels.
     pub fn extent(&self) -> vk::Extent2D {
         self.extent
     }
 
+    /// Swapchain images, in acquisition order.
     pub fn images(&self) -> &[vk::Image] {
         &self.images
     }
 
+    /// One view per swapchain image.
     pub fn image_views(&self) -> &[vk::ImageView] {
         &self.image_views
     }
 
+    /// Destroys the image views and the swapchain.
     pub fn destroy(&mut self, device: &Device) {
         unsafe {
             for view in self.image_views.drain(..) {

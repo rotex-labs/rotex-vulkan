@@ -6,15 +6,18 @@ use super::framebuffer::Framebuffer;
 use super::pass::RenderPass;
 use crate::error::{Error, ErrorKind, Severity, vk_error};
 
+/// Primary command buffer allocated from a [`CommandPool`].
 pub struct CommandBuffer {
     pub(crate) handle: vk::CommandBuffer,
 }
 
 impl CommandBuffer {
+    /// Vulkan command buffer handle.
     pub fn handle(&self) -> vk::CommandBuffer {
         self.handle
     }
 
+    /// Begins recording with `flags`.
     pub fn begin(&self, device: &Device, flags: vk::CommandBufferUsageFlags) -> Result<(), Error> {
         let begin_info = vk::CommandBufferBeginInfo::default().flags(flags);
 
@@ -26,6 +29,7 @@ impl CommandBuffer {
         .map_err(vk_error)
     }
 
+    /// Begins an inline render pass on `framebuffer`.
     pub fn begin_render_pass(
         &self,
         device: &Device,
@@ -57,16 +61,19 @@ impl CommandBuffer {
         }
     }
 
+    /// Ends the render pass currently being recorded.
     pub fn end_render_pass(&self, device: &Device) {
         unsafe {
             device.logical_device().cmd_end_render_pass(self.handle);
         }
     }
 
+    /// Finishes recording.
     pub fn end(&self, device: &Device) -> Result<(), Error> {
         unsafe { device.logical_device().end_command_buffer(self.handle) }.map_err(vk_error)
     }
 
+    /// Binds a graphics pipeline.
     pub fn bind_graphics_pipeline(&self, device: &Device, pipeline: vk::Pipeline) {
         unsafe {
             device.logical_device().cmd_bind_pipeline(
@@ -77,6 +84,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Binds graphics descriptor sets, applying `dynamic_offsets` in order.
     pub fn bind_graphics_descriptor_sets(
         &self,
         device: &Device,
@@ -97,6 +105,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Binds a compute pipeline.
     pub fn bind_compute_pipeline(&self, device: &Device, pipeline: vk::Pipeline) {
         unsafe {
             device.logical_device().cmd_bind_pipeline(
@@ -107,6 +116,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Binds compute descriptor sets starting at `first_set`.
     pub fn bind_compute_descriptor_sets(
         &self,
         device: &Device,
@@ -126,16 +136,19 @@ impl CommandBuffer {
         }
     }
 
+    /// Dispatches `x` by `y` by `z` compute workgroups.
     pub fn dispatch(&self, device: &Device, x: u32, y: u32, z: u32) {
         unsafe {
             device.logical_device().cmd_dispatch(self.handle, x, y, z);
         }
     }
 
+    /// Binds `buffer` at vertex binding 0 with offset 0.
     pub fn bind_vertex_buffer(&self, device: &Device, buffer: vk::Buffer) {
         self.bind_vertex_buffer_at(device, 0, buffer, 0);
     }
 
+    /// Binds `buffer` at `binding`, starting `offset` bytes into the buffer.
     pub fn bind_vertex_buffer_at(
         &self,
         device: &Device,
@@ -153,6 +166,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Draws `vertex_count` vertices as one instance.
     pub fn draw(&self, device: &Device, vertex_count: u32) {
         unsafe {
             device
@@ -161,6 +175,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Sets viewport 0.
     pub fn set_viewport(&self, device: &Device, viewport: vk::Viewport) {
         unsafe {
             device
@@ -169,6 +184,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Sets scissor 0.
     pub fn set_scissor(&self, device: &Device, scissor: vk::Rect2D) {
         unsafe {
             device
@@ -177,6 +193,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Records an image memory barrier from `old_layout` to `new_layout`.
     pub fn transition_image_layout(
         &self,
         device: &Device,
@@ -217,6 +234,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Copies tightly packed color texels from the start of `buffer` into `image`.
     pub fn copy_buffer_to_image(
         &self,
         device: &Device,
@@ -253,6 +271,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Copies `size` bytes from the start of `src` to the start of `dst`.
     pub fn copy_buffer(
         &self,
         device: &Device,
@@ -263,6 +282,7 @@ impl CommandBuffer {
         self.copy_buffer_region(device, src, 0, dst, 0, size);
     }
 
+    /// Copies `size` bytes from `src_offset` in `src` to `dst_offset` in `dst`.
     pub fn copy_buffer_region(
         &self,
         device: &Device,
@@ -283,6 +303,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Copies a color image from `buffer_offset`, using `row_length` as the row stride in texels.
     #[allow(clippy::too_many_arguments)]
     pub fn copy_buffer_to_image_at(
         &self,
@@ -321,6 +342,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Copies a color image into `buffer` at `buffer_offset`.
     #[allow(clippy::too_many_arguments)]
     pub fn copy_image_to_buffer(
         &self,
@@ -359,6 +381,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Records a buffer memory barrier over the first `size` bytes.
     #[allow(clippy::too_many_arguments)]
     pub fn buffer_barrier(
         &self,
@@ -391,6 +414,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Pushes `data` to `stages` at `offset` bytes into the push-constant block.
     pub fn push_constants(
         &self,
         device: &Device,
@@ -406,6 +430,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Draws one indexed indirect command stored at `offset` in `buffer`.
     pub fn draw_indexed_indirect(
         &self,
         device: &Device,
@@ -423,6 +448,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Draws `vertex_count` vertices for `instance_count` instances.
     pub fn draw_vertices(
         &self,
         device: &Device,
@@ -442,6 +468,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Resets the first `count` queries in `pool`.
     pub fn reset_queries(&self, device: &Device, pool: vk::QueryPool, count: u32) {
         unsafe {
             device
@@ -450,6 +477,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Writes a timestamp into query `index`.
     pub fn write_timestamp(&self, device: &Device, pool: vk::QueryPool, index: u32) {
         unsafe {
             device.logical_device().cmd_write_timestamp(
@@ -461,6 +489,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Begins query `index`.
     pub fn begin_query(&self, device: &Device, pool: vk::QueryPool, index: u32) {
         unsafe {
             device.logical_device().cmd_begin_query(
@@ -472,6 +501,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Ends query `index`.
     pub fn end_query(&self, device: &Device, pool: vk::QueryPool, index: u32) {
         unsafe {
             device
@@ -480,6 +510,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Copies `count` query results, as 64-bit values, into `buffer` at `offset`.
     pub fn resolve_queries(
         &self,
         device: &Device,
@@ -538,6 +569,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Binds `buffer` as the index buffer, starting at `offset`.
     pub fn bind_index_buffer(
         &self,
         device: &Device,
@@ -555,6 +587,7 @@ impl CommandBuffer {
         }
     }
 
+    /// Draws `index_count` indices for `instance_count` instances.
     pub fn draw_indexed(
         &self,
         device: &Device,
@@ -577,11 +610,13 @@ impl CommandBuffer {
     }
 }
 
+/// Command pool on the graphics queue, with per-buffer reset.
 pub struct CommandPool {
     pub(crate) handle: vk::CommandPool,
 }
 
 impl CommandPool {
+    /// Creates a reset-capable pool on the graphics queue family.
     pub fn new(device: &Device) -> Result<Self, Error> {
         let graphics_queue = device
             .queues()
@@ -606,6 +641,7 @@ impl CommandPool {
         Ok(Self { handle })
     }
 
+    /// Allocates `count` primary command buffers.
     pub fn allocate_buffers(
         &self,
         device: &Device,
@@ -629,6 +665,7 @@ impl CommandPool {
             .collect())
     }
 
+    /// Destroys the pool and every buffer allocated from it.
     pub fn destroy(&self, device: &Device) {
         unsafe {
             device

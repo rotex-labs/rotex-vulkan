@@ -5,6 +5,7 @@ use crate::error::{Error, vk_error};
 use rotex_types::{Extent2D as FrontendExtent2D, SurfaceDescriptor as FrontendSurfaceDescriptor};
 
 impl VulkanBridge {
+    /// Creates a surface and swapchain from `surface_descriptor`.
     pub fn attach_surface(
         &mut self,
         surface_descriptor: FrontendSurfaceDescriptor,
@@ -159,6 +160,7 @@ impl VulkanBridge {
         (0..count).map(|_| Semaphore::new(device)).collect()
     }
 
+    /// Recreates the swapchain at `extent`.
     pub fn resize(&mut self, extent: FrontendExtent2D) -> Result<(), Error> {
         if let Some(state) = self.surface_state.as_mut() {
             state.extent = super::init::to_vk_extent(extent);

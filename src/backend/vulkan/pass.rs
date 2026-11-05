@@ -2,26 +2,33 @@ use ash::vk;
 
 use super::device::Device;
 
+/// Color and depth attachments referenced by one subpass.
 #[derive(Debug, Clone)]
 pub struct SubpassBlueprint {
+    /// Indices into the render-pass attachment list.
     pub color_attachments: Vec<u32>,
+    /// Depth attachment index, when the subpass uses one.
     pub depth_attachment: Option<u32>,
 }
 
+/// Render pass and the attachment descriptions it was created with.
 pub struct RenderPass {
     pub(crate) render_pass: vk::RenderPass,
     attachments: Vec<vk::AttachmentDescription>,
 }
 
 impl RenderPass {
+    /// Vulkan render-pass handle.
     pub fn handle(&self) -> vk::RenderPass {
         self.render_pass
     }
 
+    /// Attachment descriptions, in creation order.
     pub fn attachments(&self) -> &[vk::AttachmentDescription] {
         &self.attachments
     }
 
+    /// Destroys the render pass.
     pub fn destroy(&self, device: &Device) {
         unsafe {
             device
@@ -31,6 +38,7 @@ impl RenderPass {
     }
 }
 
+/// Attachments, subpasses, and dependencies for one render pass.
 #[derive(Default)]
 pub struct RenderPassBuilder {
     attachments: Vec<vk::AttachmentDescription>,
@@ -39,25 +47,30 @@ pub struct RenderPassBuilder {
 }
 
 impl RenderPassBuilder {
+    /// Starts an empty builder.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Appends an attachment.
     pub fn with_attachment(mut self, attachment: vk::AttachmentDescription) -> Self {
         self.attachments.push(attachment);
         self
     }
 
+    /// Appends a subpass.
     pub fn with_subpass(mut self, subpass: SubpassBlueprint) -> Self {
         self.subpasses.push(subpass);
         self
     }
 
+    /// Appends a subpass dependency.
     pub fn with_dependency(mut self, dependency: vk::SubpassDependency) -> Self {
         self.dependencies.push(dependency);
         self
     }
 
+    /// Creates the render pass.
     pub fn build(self, device: &Device) -> Result<RenderPass, vk::Result> {
         let mut all_color_refs: Vec<Vec<vk::AttachmentReference>> =
             Vec::with_capacity(self.subpasses.len());
