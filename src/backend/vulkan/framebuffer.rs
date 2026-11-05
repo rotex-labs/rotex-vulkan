@@ -3,20 +3,24 @@ use ash::vk;
 use super::device::Device;
 use crate::error::vk_error;
 
+/// Framebuffer bound to one render pass and extent.
 pub struct Framebuffer {
     pub(crate) framebuffer: vk::Framebuffer,
     pub(crate) extent: vk::Extent2D,
 }
 
 impl Framebuffer {
+    /// Vulkan framebuffer handle.
     pub fn handle(&self) -> vk::Framebuffer {
         self.framebuffer
     }
 
+    /// Width and height in pixels.
     pub fn extent(&self) -> vk::Extent2D {
         self.extent
     }
 
+    /// Destroys the framebuffer. Attachment views are left in place.
     pub fn destroy(&self, device: &Device) {
         unsafe {
             device
@@ -26,6 +30,7 @@ impl Framebuffer {
     }
 }
 
+/// Collects attachment views and the framebuffer extent.
 pub struct FramebufferBuilder {
     attachments: Vec<vk::ImageView>,
     width: u32,
@@ -47,31 +52,37 @@ impl Default for FramebufferBuilder {
 }
 
 impl FramebufferBuilder {
+    /// Starts a builder with one array layer and no attachments.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Appends an attachment view.
     pub fn with_attachment(mut self, attachment: vk::ImageView) -> Self {
         self.attachments.push(attachment);
         self
     }
 
+    /// Sets the framebuffer size in pixels.
     pub fn with_extent(mut self, width: u32, height: u32) -> Self {
         self.width = width;
         self.height = height;
         self
     }
 
+    /// Sets the number of array layers.
     pub fn with_layers(mut self, layers: u32) -> Self {
         self.layers = layers;
         self
     }
 
+    /// Adds create flags.
     pub fn with_flags(mut self, flags: vk::FramebufferCreateFlags) -> Self {
         self.flags |= flags;
         self
     }
 
+    /// Creates the framebuffer for `render_pass`.
     pub fn build(
         self,
         device: &Device,

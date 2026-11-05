@@ -4,11 +4,13 @@ use super::device::Device;
 use crate::Error;
 use crate::error::vk_error;
 
+/// Compiled compute pipeline.
 pub struct ComputePipeline {
     handle: vk::Pipeline,
 }
 
 impl ComputePipeline {
+    /// Creates a compute pipeline from `stage` and `layout`.
     pub fn new(
         device: &Device,
         stage: &vk::PipelineShaderStageCreateInfo<'_>,
@@ -32,10 +34,12 @@ impl ComputePipeline {
         })
     }
 
+    /// Vulkan pipeline handle.
     pub fn handle(&self) -> vk::Pipeline {
         self.handle
     }
 
+    /// Destroys the pipeline.
     pub fn destroy(&self, device: &Device) {
         unsafe {
             device.logical_device().destroy_pipeline(self.handle, None);

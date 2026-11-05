@@ -5,11 +5,16 @@ use ash::vk;
 use crate::backend::vulkan::Adapter;
 use crate::error::{Error, ErrorKind, vk_error};
 
+/// Application names and optional validation for a Vulkan instance.
 #[derive(Debug, Clone)]
 pub struct InstanceOptions {
+    /// Name reported as the application.
     pub application_name: &'static str,
+    /// Name reported as the engine.
     pub engine_name: &'static str,
+    /// Requests the Khronos validation layer when the loader has it.
     pub enable_validation: bool,
+    /// Requests `VK_EXT_debug_utils` when the loader exposes it.
     pub enable_debug_utils: bool,
 }
 
@@ -24,12 +29,14 @@ impl Default for InstanceOptions {
     }
 }
 
+/// Loaded Vulkan entry points and an instance.
 pub struct Instance {
     entry: ash::Entry,
     instance: ash::Instance,
 }
 
 impl Instance {
+    /// Creates an instance. Returns a debug messenger when debug utils were enabled and available.
     pub fn new_with_options(
         options: &InstanceOptions,
         extensions: &[*const i8],
@@ -111,10 +118,12 @@ impl Instance {
         Ok((Self { entry, instance }, debug))
     }
 
+    /// Loaded Vulkan entry points.
     pub fn entry(&self) -> &ash::Entry {
         &self.entry
     }
 
+    /// Vulkan instance loader.
     pub fn instance(&self) -> &ash::Instance {
         &self.instance
     }
@@ -144,6 +153,7 @@ impl Instance {
             .collect()
     }
 
+    /// Destroys the instance.
     pub fn destroy(self) {
         unsafe {
             self.instance.destroy_instance(None);
@@ -151,6 +161,7 @@ impl Instance {
     }
 }
 
+/// Debug-utils messenger that prints warnings and errors.
 pub struct DebugMessenger {
     loader: ash::ext::debug_utils::Instance,
     messenger: vk::DebugUtilsMessengerEXT,
@@ -175,6 +186,7 @@ impl DebugMessenger {
         Ok(Self { loader, messenger })
     }
 
+    /// Destroys the messenger.
     pub fn destroy(self) {
         unsafe {
             self.loader

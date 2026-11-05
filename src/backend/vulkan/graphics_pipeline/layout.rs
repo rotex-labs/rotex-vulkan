@@ -4,11 +4,13 @@ use super::super::device::Device;
 use crate::Error;
 use crate::error::vk_error;
 
+/// Descriptor set layout.
 pub struct DescriptorSetLayout {
     handle: vk::DescriptorSetLayout,
 }
 
 impl DescriptorSetLayout {
+    /// Creates a set layout from `bindings`.
     pub fn new(
         device: &Device,
         bindings: &[vk::DescriptorSetLayoutBinding],
@@ -25,10 +27,12 @@ impl DescriptorSetLayout {
         Ok(Self { handle })
     }
 
+    /// Vulkan descriptor-set-layout handle.
     pub fn handle(&self) -> vk::DescriptorSetLayout {
         self.handle
     }
 
+    /// Destroys the set layout.
     pub fn destroy(&self, device: &Device) {
         unsafe {
             device
@@ -38,11 +42,13 @@ impl DescriptorSetLayout {
     }
 }
 
+/// Pipeline layout: descriptor set layouts and push-constant ranges.
 pub struct GraphicsPipelineLayout {
     handle: vk::PipelineLayout,
 }
 
 impl GraphicsPipelineLayout {
+    /// Creates a pipeline layout.
     pub fn new(
         device: &Device,
         set_layouts: &[vk::DescriptorSetLayout],
@@ -62,10 +68,12 @@ impl GraphicsPipelineLayout {
         Ok(Self { handle })
     }
 
+    /// Vulkan pipeline-layout handle.
     pub fn handle(&self) -> vk::PipelineLayout {
         self.handle
     }
 
+    /// Destroys the pipeline layout.
     pub fn destroy(&self, device: &Device) {
         unsafe {
             device

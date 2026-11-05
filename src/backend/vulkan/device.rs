@@ -12,23 +12,34 @@ use crate::caps::{self, CAPS};
 use crate::core::Instance;
 use crate::error::{Error, ErrorKind, Severity, vk_error};
 
+/// Kind of queue a device allocation is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueueCategory {
+    /// Queues that support graphics commands.
     Graphics,
+    /// Queues that support compute commands.
     Compute,
+    /// Queues that support transfer commands.
     Transfer,
 }
 
+/// Queues of one category to allocate from a single family.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QueueRequest {
+    /// Queue capability to match.
     pub category: QueueCategory,
+    /// Number of queues to take from the chosen family.
     pub count: u32,
 }
 
+/// Logical device to create from one physical device.
 #[derive(Debug, Clone)]
 pub struct DeviceDescriptor {
+    /// Features the logical device enables.
     pub required_features: vk::PhysicalDeviceFeatures,
+    /// Requests the swapchain device extension.
     pub enable_presentation: bool,
+    /// Queue families to allocate.
     pub queues: Vec<QueueRequest>,
 }
 
@@ -347,13 +358,18 @@ impl Adapter {
     }
 }
 
+/// Queues taken from one family.
 #[derive(Debug, Clone)]
 pub struct QueueAllocation {
+    /// Category these queues serve.
     pub category: QueueCategory,
+    /// Vulkan queue-family index.
     pub family_index: u32,
+    /// Number of queues allocated from this family.
     pub count: u32,
 }
 
+/// Logical device, the physical device it came from, and the queues allocated with it.
 pub struct Device {
     pub(crate) handle: vk::PhysicalDevice,
     pub(crate) device: ash::Device,
@@ -362,26 +378,32 @@ pub struct Device {
 }
 
 impl Device {
+    /// Ash logical-device loader.
     pub fn logical_device(&self) -> &ash::Device {
         &self.device
     }
 
+    /// Physical device handle.
     pub fn physical_device(&self) -> vk::PhysicalDevice {
         self.handle
     }
 
+    /// Properties queried when the device was created.
     pub fn properties(&self) -> &vk::PhysicalDeviceProperties {
         &self.properties
     }
 
+    /// Queue families allocated for this device.
     pub fn queues(&self) -> &[QueueAllocation] {
         &self.queues
     }
 
+    /// Queue `queue_index` within `family_index`.
     pub fn get_queue(&self, family_index: u32, queue_index: u32) -> vk::Queue {
         unsafe { self.device.get_device_queue(family_index, queue_index) }
     }
 
+    /// Returns a memory type allowed by `type_filter` that includes `properties`.
     pub fn find_memory_type(
         &self,
         instance: &Instance,
@@ -406,6 +428,7 @@ impl Device {
         Err(Error::fatal(ErrorKind::NoCompatibleDevice))
     }
 
+    /// Rounds `original_size` up to the device minimum uniform-buffer offset alignment.
     pub fn pad_uniform_buffer_size(&self, original_size: usize) -> usize {
         let min_alignment = self.properties.limits.min_uniform_buffer_offset_alignment as usize;
         let mut aligned_size = original_size;
@@ -417,6 +440,7 @@ impl Device {
         aligned_size
     }
 
+    /// Destroys the logical device.
     pub fn destroy(&mut self) {
         unsafe {
             self.device.destroy_device(None);

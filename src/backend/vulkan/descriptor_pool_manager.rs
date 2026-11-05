@@ -4,6 +4,7 @@ use super::descriptor::{DescriptorPool, DescriptorSet};
 use super::device::Device;
 use crate::error::Error;
 
+/// Grows descriptor pools when an allocation runs out of pool memory.
 pub struct DescriptorPoolManager {
     pools: Vec<DescriptorPool>,
     pool_sizes: Vec<vk::DescriptorPoolSize>,
@@ -11,6 +12,7 @@ pub struct DescriptorPoolManager {
 }
 
 impl DescriptorPoolManager {
+    /// Stores the pool layout. The first pool is created on the first allocation.
     pub fn new(pool_sizes: Vec<vk::DescriptorPoolSize>, initial_max_sets: u32) -> Self {
         Self {
             pools: Vec::new(),
@@ -19,6 +21,7 @@ impl DescriptorPoolManager {
         }
     }
 
+    /// Allocates one set per layout, creating a larger pool when the current one is exhausted.
     pub fn allocate_sets(
         &mut self,
         device: &Device,
@@ -45,6 +48,7 @@ impl DescriptorPoolManager {
         }
     }
 
+    /// Returns `sets` to the pool that allocated them.
     pub fn free_sets(&self, device: &Device, sets: &[DescriptorSet]) -> Result<(), Error> {
         if sets.is_empty() {
             return Ok(());
@@ -57,6 +61,7 @@ impl DescriptorPoolManager {
         Ok(())
     }
 
+    /// Destroys every pool.
     pub fn destroy(&mut self, device: &Device) {
         for pool in self.pools.drain(..) {
             pool.destroy(device);
@@ -79,6 +84,7 @@ fn is_pool_exhausted(err: &Error) -> bool {
     )
 }
 
+/// Pool sizes for storage-buffer descriptors.
 pub fn storage_pool_sizes() -> Vec<vk::DescriptorPoolSize> {
     vec![vk::DescriptorPoolSize {
         ty: vk::DescriptorType::STORAGE_BUFFER,
@@ -86,6 +92,7 @@ pub fn storage_pool_sizes() -> Vec<vk::DescriptorPoolSize> {
     }]
 }
 
+/// Pool sizes for uniform buffers, dynamic uniform buffers, storage buffers, and combined image samplers.
 pub fn general_pool_sizes() -> Vec<vk::DescriptorPoolSize> {
     vec![
         vk::DescriptorPoolSize {

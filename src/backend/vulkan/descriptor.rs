@@ -5,15 +5,18 @@ use super::device::Device;
 use crate::Error;
 use crate::error::vk_error;
 
+/// Descriptor set allocated from a [`DescriptorPool`].
 pub struct DescriptorSet {
     handle: vk::DescriptorSet,
 }
 
 impl DescriptorSet {
+    /// Vulkan descriptor set handle.
     pub fn handle(&self) -> vk::DescriptorSet {
         self.handle
     }
 
+    /// Writes one buffer binding at `binding`.
     pub fn write_buffer(
         &self,
         device: &Device,
@@ -39,6 +42,7 @@ impl DescriptorSet {
         }
     }
 
+    /// Writes one combined image-sampler binding at `binding`.
     pub fn write_image_sampler(
         &self,
         device: &Device,
@@ -64,11 +68,13 @@ impl DescriptorSet {
     }
 }
 
+/// Descriptor pool that can free individual sets.
 pub struct DescriptorPool {
     handle: vk::DescriptorPool,
 }
 
 impl DescriptorPool {
+    /// Creates a pool that can allocate `max_sets` sets of the given sizes.
     pub fn new(
         device: &Device,
         max_sets: u32,
@@ -89,6 +95,7 @@ impl DescriptorPool {
         Ok(Self { handle })
     }
 
+    /// Allocates one set for each layout.
     pub fn allocate_sets(
         &self,
         device: &Device,
@@ -111,10 +118,12 @@ impl DescriptorPool {
             .collect())
     }
 
+    /// Vulkan descriptor pool handle.
     pub fn handle(&self) -> vk::DescriptorPool {
         self.handle
     }
 
+    /// Returns `sets` to this pool.
     pub fn free_sets(&self, device: &Device, sets: &[DescriptorSet]) -> Result<(), Error> {
         if sets.is_empty() {
             return Ok(());
@@ -128,6 +137,7 @@ impl DescriptorPool {
         .map_err(vk_error)
     }
 
+    /// Destroys the pool and every set still allocated from it.
     pub fn destroy(&self, device: &Device) {
         unsafe {
             device
