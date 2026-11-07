@@ -114,9 +114,14 @@ fn map_err_route<T>(r: Result<T, Error>) -> Result<T, CoreError> {
 
 impl GpuBackend for VulkanBridge {
     fn capabilities(&self) -> rotex_types::BackendCapabilities {
-        crate::caps::capabilities_for(crate::caps::limits_from_vk(
-            &self.device.raw().properties().limits,
-        ))
+        let limits = crate::caps::limits_from_vk(&self.device.raw().properties().limits);
+        let vk_features = unsafe {
+            self.instance
+                .raw()
+                .instance()
+                .get_physical_device_features(self.device.raw().physical_device())
+        };
+        crate::caps::capabilities_for(limits, crate::caps::feature_set_from_vk(&vk_features))
     }
 
     fn attach_surface(

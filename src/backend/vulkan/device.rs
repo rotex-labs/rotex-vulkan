@@ -3,8 +3,7 @@ use std::ffi::CStr;
 
 use ash::vk;
 use rotex_types::{
-    AdapterCapabilities, AdapterId, AdapterInfo, AdapterQueueSupport, DeviceFeatures, FeatureSet,
-    GpuApiBackend, HardwareFamily,
+    AdapterCapabilities, AdapterId, AdapterInfo, AdapterQueueSupport, GpuApiBackend, HardwareFamily,
 };
 
 use crate::caps::{self, CAPS};
@@ -95,25 +94,20 @@ impl Adapter {
             capabilities: AdapterCapabilities {
                 supports_window_presentation,
                 queue_support,
-                available_features,
+                features: available_features,
                 limits: caps::limits_from_vk(&self.limits),
-                extensions: FeatureSet::INDIRECT_DRAW,
                 core: CAPS,
             },
         })
     }
 
-    fn available_features(&self, instance: &Instance) -> DeviceFeatures {
+    fn available_features(&self, instance: &Instance) -> rotex_types::FeatureSet {
         let features = unsafe {
             instance
                 .instance()
                 .get_physical_device_features(self.handle)
         };
-        DeviceFeatures {
-            sampler_anisotropy: features.sampler_anisotropy != 0,
-            fill_mode_non_solid: features.fill_mode_non_solid != 0,
-            wide_lines: features.wide_lines != 0,
-        }
+        caps::feature_set_from_vk(&features)
     }
 
     fn queue_support(&self, instance: &Instance) -> AdapterQueueSupport {

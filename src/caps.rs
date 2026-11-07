@@ -41,10 +41,24 @@ pub(crate) fn limits_from_vk(limits: &vk::PhysicalDeviceLimits) -> Limits {
     }
 }
 
-pub(crate) fn capabilities_for(limits: Limits) -> BackendCapabilities {
+pub(crate) fn feature_set_from_vk(features: &vk::PhysicalDeviceFeatures) -> FeatureSet {
+    let mut set = FeatureSet::INDIRECT_DRAW;
+    if features.sampler_anisotropy != 0 {
+        set = set.union(FeatureSet::SAMPLER_ANISOTROPY);
+    }
+    if features.fill_mode_non_solid != 0 {
+        set = set.union(FeatureSet::FILL_MODE_NON_SOLID);
+    }
+    if features.wide_lines != 0 {
+        set = set.union(FeatureSet::WIDE_LINES);
+    }
+    set
+}
+
+pub(crate) fn capabilities_for(limits: Limits, features: FeatureSet) -> BackendCapabilities {
     BackendCapabilities {
         core: CAPS,
         limits,
-        extensions: FeatureSet::INDIRECT_DRAW,
+        features,
     }
 }

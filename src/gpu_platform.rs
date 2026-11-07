@@ -4,7 +4,7 @@ use raw_window_handle::RawDisplayHandle;
 use rotex_core::{
     Error as CoreError, ErrorKind as CoreErrorKind, GpuPlatform, Severity as CoreSeverity,
 };
-use rotex_types::{AdapterId, AdapterInfo, DeviceDescriptor, PlatformDescriptor};
+use rotex_types::{AdapterId, AdapterInfo, DebugMode, DeviceDescriptor, PlatformDescriptor};
 
 use crate::backend::vulkan::{
     Adapter, DeviceDescriptor as BackendDeviceDescriptor, VulkanInstance,
@@ -28,12 +28,13 @@ impl GpuPlatform for VulkanGpuPlatform {
     type Backend = VulkanBridge;
 
     async fn new(platform_descriptor: PlatformDescriptor) -> Result<Self, CoreError> {
+        let validation = platform_descriptor.debug == DebugMode::Validation;
         let options = InstanceOptions {
-            enable_validation: platform_descriptor.enable_validation,
-            enable_debug_utils: platform_descriptor.enable_validation,
+            enable_validation: validation,
+            enable_debug_utils: validation,
             ..Default::default()
         };
-        let mut extension_list = platform_descriptor.platform_extensions;
+        let mut extension_list = Vec::new();
         if let Some(display_handle) = platform_descriptor.display_handle {
             extension_list.extend(surface_extension_names(display_handle).map_err(to_core_error)?);
         }

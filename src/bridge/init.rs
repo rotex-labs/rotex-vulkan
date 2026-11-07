@@ -9,9 +9,7 @@ use crate::backend::vulkan::{
     SamplerDescriptor, VulkanDevice, VulkanInstance, general_pool_sizes, storage_pool_sizes,
 };
 use crate::error::{Error, ErrorKind};
-use rotex_types::{
-    DeviceFeatures as FrontendDeviceFeatures, Extent2D as FrontendExtent2D, WorkQueueHints,
-};
+use rotex_types::{Extent2D as FrontendExtent2D, FeatureSet, WorkQueueHints};
 
 const FRAMES_IN_FLIGHT: u32 = 2;
 
@@ -129,11 +127,11 @@ pub(crate) fn map_work_queue_hints(hints: WorkQueueHints) -> Vec<BackendQueueReq
     queues
 }
 
-pub(crate) fn map_device_features(features: FrontendDeviceFeatures) -> vk::PhysicalDeviceFeatures {
+pub(crate) fn map_device_features(features: FeatureSet) -> vk::PhysicalDeviceFeatures {
     vk::PhysicalDeviceFeatures {
-        sampler_anisotropy: features.sampler_anisotropy as u32,
-        fill_mode_non_solid: features.fill_mode_non_solid as u32,
-        wide_lines: features.wide_lines as u32,
+        sampler_anisotropy: u32::from(features.contains(FeatureSet::SAMPLER_ANISOTROPY)),
+        fill_mode_non_solid: u32::from(features.contains(FeatureSet::FILL_MODE_NON_SOLID)),
+        wide_lines: u32::from(features.contains(FeatureSet::WIDE_LINES)),
         ..Default::default()
     }
 }
