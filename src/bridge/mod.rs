@@ -155,7 +155,7 @@ impl GpuBackend for VulkanBridge {
         map_err_route(VulkanBridge::read_texture(self, id))
     }
 
-    fn destroy(self: Box<Self>) {
+    fn destroy(self) {
         self.destroy_all();
     }
 
