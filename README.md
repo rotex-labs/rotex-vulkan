@@ -30,7 +30,7 @@ Stateless Vulkan translator for the same commands as the other backends.
 
 ## Status
 
-Version 0.2.0. A texture render target can be cleared without a swapchain. Presentation still requires an attached surface.
+Version 0.3.0. A texture render target can be cleared without a swapchain. Presentation still requires an attached surface.
 
 ## License
 
